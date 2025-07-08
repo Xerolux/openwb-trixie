@@ -5,6 +5,41 @@
 
 echo "=== Python 3.9.23 Kompilierung startet ==="
 
+# 0. OpenWB Konfiguration zu /boot/firmware/config.txt hinzufügen
+echo "0. OpenWB Konfiguration wird zu /boot/firmware/config.txt hinzugefügt..."
+sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
+
+# Audio deaktivieren (dtparam=audio=on zu dtparam=audio=off)
+echo "Audio wird deaktiviert..."
+sudo sed -i 's/dtparam=audio=on/dtparam=audio=off/g' /boot/firmware/config.txt
+
+# vc4-kms-v3d auskommentieren
+echo "vc4-kms-v3d wird auskommentiert..."
+sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' /boot/firmware/config.txt
+
+# OpenWB Konfiguration hinzufügen
+sudo tee -a /boot/firmware/config.txt > /dev/null << 'EOF'
+# openwb - begin
+# openwb-version:4
+# Do not edit this section! We need begin/end and version for proper updates!
+[all]
+gpio=4,5,7,11,17,22,23,24,25,26,27=op,dl
+gpio=6,8,9,10,12,13,16,21=ip,pu
+[cm4]
+# GPIO 22 is the buzzer on computemodule4
+gpio=22=op,dh
+[all]
+# enable uart for modbus port on older addon hat
+# this also requires to disable Bluetooth
+dtoverlay=disable-bt
+enable_uart=1
+avoid_warnings=1
+# openwb - end
+EOF
+
+echo "OpenWB Konfiguration hinzugefügt. Backup erstellt als /boot/firmware/config.txt.backup"
+echo "Audio deaktiviert (dtparam=audio=off) und vc4-kms-v3d auskommentiert"
+
 # 1. System aktualisieren
 echo "1. System wird aktualisiert..."
 sudo apt update && sudo apt upgrade -y
@@ -117,12 +152,17 @@ if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
     pip --version
     python3 -c "import sys; print(sys.version)"
     
+    # 12. rpi-lgpio Paket installieren
+    echo "12. rpi-lgpio Paket wird installiert..."
+    pip3 install rpi-lgpio
+    
     echo "=== Installation abgeschlossen ==="
     echo "Python 3.9.23 ist jetzt als Standard-Python installiert"
     echo "Verfügbare Befehle: python, python3, pip, pip3"
+    echo "rpi-lgpio wurde installiert"
     
-    # 12. PHP Upload-Limits konfigurieren
-    echo "12. PHP Upload-Limits werden konfiguriert..."
+    # 13. PHP Upload-Limits konfigurieren
+    echo "13. PHP Upload-Limits werden konfiguriert..."
     sudo mkdir -p /etc/php/8.4/apache2/conf.d/
     echo "upload_max_filesize = 300M" | sudo tee /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
     echo "post_max_size = 300M" | sudo tee -a /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
@@ -135,6 +175,7 @@ if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
     sudo systemctl restart apache2
     
     echo "=== Vollständige Installation beendet ==="
+    echo "HINWEIS: Ein Neustart ist erforderlich, damit die OpenWB GPIO-Konfiguration wirksam wird!"
 else
     echo "Installation abgebrochen."
     echo "Tipp: Verwenden Sie 'make altinstall' für eine sichere Installation"
