@@ -1,11 +1,14 @@
 #!/bin/bash
 
-# Python 3.9.23 kompilieren und installieren
-# WARNUNG: make install überschreibt die Standard-Python-Installation!
+# Python Installation und Virtual Environment Setup für OpenWB
+#
+# NEUE LOGIK (optimiert für Trixie):
+# - Ohne Flags: Kompiliert Python 3.9.23 (Legacy-Kompatibilität, langsam!)
+# - Mit --with-venv oder --venv-only: Nutzt System-Python (schnell!)
 #
 # Optionen:
-#   --with-venv    Erstellt zusätzlich ein isoliertes venv für OpenWB
-#   --venv-only    Überspringt Python-Installation, erstellt nur venv
+#   --with-venv    Erstellt venv mit System-Python (KEINE Kompilierung, empfohlen!)
+#   --venv-only    Nur venv erstellen/aktualisieren (KEINE Python-Installation)
 #   --help         Zeigt diese Hilfe
 
 # Parse Argumente
@@ -24,15 +27,26 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
+            echo "OpenWB Python Installation für Debian Trixie"
+            echo ""
             echo "Verwendung: $0 [OPTIONEN]"
             echo ""
             echo "Optionen:"
-            echo "  (keine)         Standardinstallation (überschreibt System-Python)"
-            echo "  --with-venv     Installiert Python + erstellt isoliertes venv"
-            echo "  --venv-only     Überspringt Python-Installation, erstellt nur venv"
+            echo "  (keine)         Legacy-Modus: Kompiliert Python 3.9.23 (langsam!)"
+            echo "                  Überschreibt System-Python"
+            echo ""
+            echo "  --with-venv     Modern: Nutzt System-Python + venv (EMPFOHLEN!)"
+            echo "                  ✓ Keine Kompilierung (spart 30-60 Min)"
+            echo "                  ✓ Nutzt Trixie Python 3.12+"
+            echo "                  ✓ Überlebt OpenWB-Updates"
+            echo ""
+            echo "  --venv-only     Nur venv erstellen/aktualisieren"
+            echo "                  (für Updates oder frische Trixie-Installation)"
+            echo ""
             echo "  --help          Zeigt diese Hilfe"
             echo ""
-            echo "Empfohlen: --with-venv für produktive Umgebungen"
+            echo "Empfohlen: ./install_python3.9.sh --with-venv"
+            echo ""
             exit 0
             ;;
         *)
@@ -43,18 +57,35 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "=== Python 3.9.23 Installation ==="
+echo "====================================================================="
+echo "   OpenWB Python Installation"
+echo "====================================================================="
 if [ "$VENV_ONLY" = true ]; then
-    echo "Modus: Nur venv-Erstellung"
+    echo "Modus: Virtual Environment Setup (nutzt System-Python)"
+    echo "✓ Keine Python-Kompilierung"
+    echo "✓ Schnelle Installation"
 elif [ "$INSTALL_VENV" = true ]; then
-    echo "Modus: Python-Installation + venv"
+    echo "Modus: venv-Installation mit System-Python"
+    echo "✓ Keine Python-Kompilierung (spart 30-60 Min!)"
+    echo "✓ Nutzt Debian Trixie System-Python"
+    echo "✓ Isolierte Paket-Installation"
 else
-    echo "Modus: Standard (Python-Installation ohne venv)"
+    echo "Modus: Legacy - Python 3.9.23 Kompilierung"
+    echo "⚠ WARNUNG: Überschreibt System-Python!"
+    echo "⚠ Dauert 30-60 Minuten!"
+    echo ""
+    read -p "Möchtest du stattdessen --with-venv nutzen? (empfohlen) (j/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Jj]$ ]]; then
+        echo "Starte mit --with-venv..."
+        INSTALL_VENV=true
+        VENV_ONLY=true
+    fi
 fi
 echo ""
 
-# Überspringe Python-Installation wenn --venv-only
-if [ "$VENV_ONLY" = false ]; then
+# Überspringe Python-Kompilierung wenn venv verwendet wird
+if [ "$INSTALL_VENV" = false ]; then
 
 # 0. OpenWB Konfiguration zu /boot/firmware/config.txt hinzufügen
 echo "0. OpenWB Konfiguration wird zu /boot/firmware/config.txt hinzugefügt..."
@@ -238,19 +269,23 @@ echo "Temporäre Dateien werden bereinigt..."
 cd /
 rm -rf /tmp/Python-3.9.23*
 
-fi  # Ende von if [ "$VENV_ONLY" = false ]
+fi  # Ende von if [ "$INSTALL_VENV" = false ]
 
 # Virtual Environment Setup (wenn --with-venv oder --venv-only)
 if [ "$INSTALL_VENV" = true ]; then
     echo ""
-    echo "=== Virtual Environment Setup ==="
+    echo "====================================================================="
+    echo "   Virtual Environment Setup"
+    echo "====================================================================="
 
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     VENV_SETUP="$SCRIPT_DIR/setup_venv.sh"
+    POST_UPDATE_HOOK="$SCRIPT_DIR/openwb_post_update_hook.sh"
 
     if [ ! -f "$VENV_SETUP" ]; then
         echo "FEHLER: setup_venv.sh nicht gefunden: $VENV_SETUP"
         echo "venv-Setup wird übersprungen"
+        exit 1
     else
         echo "Führe venv-Setup aus..."
         chmod +x "$VENV_SETUP"
@@ -259,10 +294,67 @@ if [ "$INSTALL_VENV" = true ]; then
         if [ $? -eq 0 ]; then
             echo "✓ Virtual Environment erfolgreich eingerichtet"
             echo ""
+
+            # Automatische Post-Update Hook Installation
+            echo "=== Post-Update Hook Installation ==="
+            if [ -f "$POST_UPDATE_HOOK" ]; then
+                # Versuche Hook zu installieren (wird nur funktionieren, wenn OpenWB installiert ist)
+                OPENWB_DIRS=(
+                    "/var/www/html/openWB"
+                    "/home/openwb/openWB"
+                    "/opt/openWB"
+                )
+
+                HOOK_INSTALLED=false
+                for openwb_dir in "${OPENWB_DIRS[@]}"; do
+                    if [ -d "$openwb_dir" ]; then
+                        echo "OpenWB gefunden in: $openwb_dir"
+
+                        # Erstelle config-Verzeichnis falls nicht vorhanden
+                        sudo mkdir -p "$openwb_dir/data/config" 2>/dev/null || true
+
+                        # Kopiere Hook
+                        if sudo cp "$POST_UPDATE_HOOK" "$openwb_dir/data/config/post-update.sh" 2>/dev/null; then
+                            sudo chmod +x "$openwb_dir/data/config/post-update.sh"
+                            echo "✓ Post-Update Hook installiert: $openwb_dir/data/config/post-update.sh"
+                            HOOK_INSTALLED=true
+                            break
+                        fi
+                    fi
+                done
+
+                if [ "$HOOK_INSTALLED" = false ]; then
+                    echo "⚠ OpenWB noch nicht installiert"
+                    echo "  Hook wird später automatisch installiert"
+                    echo "  Oder manuell nach OpenWB-Installation:"
+                    echo "  sudo cp $POST_UPDATE_HOOK /var/www/html/openWB/data/config/post-update.sh"
+                    echo "  sudo chmod +x /var/www/html/openWB/data/config/post-update.sh"
+                fi
+            else
+                echo "⚠ Post-Update Hook nicht gefunden: $POST_UPDATE_HOOK"
+            fi
+
+            echo ""
+            echo "====================================================================="
+            echo "   Installation abgeschlossen!"
+            echo "====================================================================="
+            echo ""
+            echo "Python-Version im venv:"
+            source /opt/openwb-venv/bin/activate
+            python --version
+            deactivate
+            echo ""
             echo "Verwendung:"
             echo "  1. Aktivieren: source /opt/openwb-venv/bin/activate"
             echo "  2. Wrapper: openwb-activate python script.py"
             echo "  3. Update: $0 --venv-only"
+            echo ""
+            echo "Vorteile:"
+            echo "  ✓ Keine Python-Kompilierung (30-60 Min gespart!)"
+            echo "  ✓ Nutzt modernes System-Python"
+            echo "  ✓ Überlebt OpenWB-Updates automatisch"
+            echo "  ✓ Post-Update Hook installiert (automatische Updates)"
+            echo ""
         else
             echo "✗ Fehler beim venv-Setup"
             exit 1
@@ -275,8 +367,8 @@ echo "=== Script beendet ==="
 
 if [ "$INSTALL_VENV" = true ]; then
     echo ""
-    echo "Empfehlung:"
-    echo "- Verwende das venv für alle OpenWB-Python-Skripte"
-    echo "- Das venv überlebt OpenWB-Updates"
-    echo "- Aktualisiere das venv nach Updates mit: $0 --venv-only"
+    echo "Nächste Schritte:"
+    echo "  1. Installiere OpenWB (falls noch nicht geschehen)"
+    echo "  2. Nutze 'openwb-activate' für Python-Skripte"
+    echo "  3. Das venv wird automatisch nach OpenWB-Updates aktualisiert"
 fi

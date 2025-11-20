@@ -213,36 +213,51 @@ main() {
         fi
     fi
     
-    # Schritt 3: Python 3.9.23 Installation
+    # Schritt 3: Python Installation
     if [ -z "$continue_step" ] || [ "$continue_step" = "3" ]; then
-        log "=== Schritt 3: Python 3.9.23 Installation ==="
-
         cd /home/openwb/openwb-trixie
 
-        # Prüfe ob Python 3.9.23 bereits installiert ist
-        if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
-            log "Python 3.9.23 bereits installiert, überspringe..."
+        if [ "$USE_VENV" = true ]; then
+            log "=== Schritt 3: Virtual Environment Setup (nutzt System-Python) ==="
+            log "✓ Keine Python-Kompilierung nötig (spart 30-60 Min!)"
 
-            # Wenn venv gewünscht, aber noch nicht installiert
-            if [ "$USE_VENV" = true ] && [ ! -d "/opt/openwb-venv" ]; then
-                log "Erstelle Virtual Environment..."
+            # Prüfe ob venv bereits existiert
+            if [ -d "/opt/openwb-venv" ]; then
+                log "venv bereits vorhanden, aktualisiere..."
                 chmod +x install_python3.9.sh
                 ./install_python3.9.sh --venv-only
-            fi
-        else
-            log "Python 3.9.23 wird installiert..."
-            chmod +x install_python3.9.sh
-
-            # Führe Installation automatisch aus (mit 'y' Antwort)
-            if [ "$USE_VENV" = true ]; then
-                log "Installation mit Virtual Environment..."
-                echo "y" | ./install_python3.9.sh --with-venv
             else
-                echo "y" | ./install_python3.9.sh
+                log "Erstelle Virtual Environment mit System-Python..."
+                chmod +x install_python3.9.sh
+                ./install_python3.9.sh --venv-only
+
+                if [ $? -eq 0 ]; then
+                    log_success "venv erfolgreich erstellt"
+                else
+                    log_error "Fehler beim venv-Setup"
+                    exit 1
+                fi
             fi
 
-            log_warning "Python-Installation abgeschlossen, Neustart erforderlich"
-            reboot_and_continue "4"
+            # Kein Neustart nötig bei venv-only Installation
+            log_success "Python-Setup abgeschlossen (kein Neustart nötig)"
+        else
+            log "=== Schritt 3: Python 3.9.23 Kompilierung ==="
+            log_warning "Dies dauert 30-60 Minuten!"
+
+            # Prüfe ob Python 3.9.23 bereits installiert ist
+            if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
+                log "Python 3.9.23 bereits installiert, überspringe..."
+            else
+                log "Python 3.9.23 wird kompiliert und installiert..."
+                chmod +x install_python3.9.sh
+
+                # Führe Installation automatisch aus (mit 'y' Antwort)
+                echo "y" | ./install_python3.9.sh
+
+                log_warning "Python-Installation abgeschlossen, Neustart erforderlich"
+                reboot_and_continue "4"
+            fi
         fi
     fi
     

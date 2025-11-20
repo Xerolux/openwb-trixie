@@ -1,5 +1,26 @@
 # OpenWB auf Debian Trixie Installation - Komplette Anleitung
 
+## 🚀 Schnellstart
+
+### Für frische Trixie-Installation (EMPFOHLEN - spart 30-60 Min!)
+
+**One-Liner für Debian Trixie (nutzt System-Python, keine Kompilierung!):**
+```bash
+curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh | bash
+```
+
+**Was passiert:**
+- ✓ Nutzt System-Python (3.12+) - KEINE Kompilierung!
+- ✓ Erstellt isoliertes venv in `/opt/openwb-venv`
+- ✓ Überlebt OpenWB-Updates automatisch
+- ✓ Installation in ~10-15 Minuten (statt 60-90 Min!)
+
+### Für Bookworm -> Trixie Upgrade
+
+Falls du von Bookworm upgraden willst, folge der [vollständigen Anleitung unten](#schritt-1-raspberry-pi-os-bookworm-light-64-bit-installieren).
+
+---
+
 ## Schritt 1: Raspberry Pi OS Bookworm Light 64-bit installieren
 
 ### 1.1 Raspberry Pi Imager vorbereiten
@@ -77,49 +98,66 @@ lsb_release -a
 # Sollte "Debian GNU/Linux trixie/sid" oder ähnlich anzeigen
 ```
 
-## Schritt 4: Python 3.9.23 Installation
+## Schritt 4: Python Installation
 
 ### 4.1 Wähle Installationsmethode
 
-**🎯 Empfohlen: Installation mit Virtual Environment (venv)**
+**🎯 NEU & EMPFOHLEN: Virtual Environment mit System-Python (schnell!)**
 
-Mit venv werden Python-Pakete isoliert installiert und überleben OpenWB-Updates:
+Nutzt das System-Python von Trixie - KEINE Kompilierung nötig!
 ```bash
 cd openwb-trixie
 chmod +x install_python3.9.sh
-./install_python3.9.sh --with-venv
+./install_python3.9.sh --with-venv  # oder --venv-only
 ```
 
-**Alternative: Standard-Installation (ohne venv)**
+**Vorteile:**
+- ✅ **Keine Python-Kompilierung** (spart 30-60 Minuten!)
+- ✅ Nutzt modernes **Debian Trixie Python 3.12+**
+- ✅ **Isolierte Paket-Installation** (venv)
+- ✅ **Überlebt OpenWB-Updates** automatisch
+- ✅ Post-Update Hook wird automatisch installiert
+
+**Legacy: Python 3.9.23 kompilieren (nur für Kompatibilität)**
 ```bash
 cd openwb-trixie
 chmod +x install_python3.9.sh
-./install_python3.9.sh
+./install_python3.9.sh  # ohne Flag
 ```
+
+⚠️ **Warnung:** Überschreibt System-Python und dauert 30-60 Minuten!
 
 ### 4.2 Was das Script macht
 
-**Basis-Installation (beide Methoden):**
-- Konfiguriert OpenWB-spezifische GPIO-Einstellungen in `/boot/firmware/config.txt`
+**Mit --with-venv oder --venv-only (EMPFOHLEN):**
+- Konfiguriert OpenWB-spezifische GPIO-Einstellungen
 - Deaktiviert Audio und vc4-kms-v3d
-- Installiert alle notwendigen Build-Abhängigkeiten
-- Kompiliert Python 3.9.23 aus dem Quellcode
-- Führt Tests durch
-- **Warnung**: Überschreibt die Standard-Python-Installation!
-- Konfiguriert PHP Upload-Limits auf 300M
-
-**Zusätzlich bei --with-venv:**
-- Erstellt isoliertes Virtual Environment in `/opt/openwb-venv`
+- Erstellt venv in `/opt/openwb-venv` mit System-Python
 - Installiert alle Pakete aus `requirements.txt`
 - Erstellt Wrapper-Skript `openwb-activate`
-- Das venv überlebt OpenWB-Updates!
+- Installiert Post-Update Hook automatisch
+- **KEINE Python-Kompilierung!** ⚡
 
-### 4.3 Installation bestätigen
-- Bestätige mit `y` wenn gefragt wird, ob die Standard-Python-Installation überschrieben werden soll
-- **Nach der Python-Installation ist ein Neustart erforderlich** für die GPIO-Konfiguration!
+**Legacy-Modus (ohne Flags):**
+- Alle oben genannten Konfigurationen
+- + Kompiliert Python 3.9.23 aus Quellcode (30-60 Min!)
+- + Überschreibt System-Python
+- + Führt Tests durch
+
+### 4.3 Installation
+
+**Mit venv (empfohlen):**
+- Keine Bestätigung nötig
+- Kein Neustart erforderlich (nur GPIO-Config wird geändert)
+- Schnelle Installation in ~2-5 Minuten
+
+**Legacy-Modus:**
+- Bestätige mit `y` wenn gefragt
+- **Neustart erforderlich** nach Installation
+- Installation dauert 30-60 Minuten
 
 ```bash
-sudo reboot
+sudo reboot  # Nur bei Legacy-Modus nötig
 ```
 
 ### 4.4 Python-Installation testen
@@ -174,38 +212,51 @@ sudo systemctl status openwb
 - Öffne in einem Browser: `http://[IP-DES-PI]`
 - Das OpenWB Web-Interface sollte erscheinen
 
-## One-Liner für Experten (nach Schritt 2)
+## One-Liner für Experten
 
-**Standard-Installation:**
+### 🚀 Für frische Trixie-Installation (SCHNELLSTE Option!)
+
+**Nutzt System-Python, keine Kompilierung (~10-15 Min):**
 ```bash
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_complete.sh | bash
+curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh | bash
 ```
 
-**Mit Virtual Environment (empfohlen):**
+### Für Bookworm -> Trixie Upgrade
+
+**Mit venv (empfohlen, ~40-50 Min):**
 ```bash
 curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_complete.sh | bash -s -- --with-venv
+```
+
+**Legacy ohne venv (~60-90 Min):**
+```bash
+curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_complete.sh | bash
 ```
 
 ## Virtual Environment Wartung
 
 ### 🔄 venv nach OpenWB-Updates aktualisieren
 
-Nach einem OpenWB-Update solltest du das venv aktualisieren:
+**✨ NEU: Komplett automatisch!**
 
-**Automatisch (mit Post-Update Hook):**
-```bash
-# Kopiere den Hook nach OpenWB-Installation
-cd openwb-trixie
-sudo cp openwb_post_update_hook.sh /var/www/html/openWB/data/config/post-update.sh
-sudo chmod +x /var/www/html/openWB/data/config/post-update.sh
-```
+Bei Installation mit `--with-venv` oder `--venv-only` wird der Post-Update Hook **automatisch installiert**. Das venv wird nach jedem OpenWB-Update automatisch aktualisiert - **kein manuelles Eingreifen nötig!**
 
-**Manuell aktualisieren:**
+**Manuelle Aktualisierung (falls nötig):**
 ```bash
 cd openwb-trixie
 ./install_python3.9.sh --venv-only
 # oder
 ./setup_venv.sh --update
+```
+
+**Post-Update Hook manuell prüfen:**
+```bash
+# Prüfe ob Hook installiert ist
+ls -la /var/www/html/openWB/data/config/post-update.sh
+
+# Hook manuell installieren (nur falls nötig)
+sudo cp openwb_post_update_hook.sh /var/www/html/openWB/data/config/post-update.sh
+sudo chmod +x /var/www/html/openWB/data/config/post-update.sh
 ```
 
 ### 📦 Neue Pakete hinzufügen
@@ -300,14 +351,17 @@ Die Installation ist abgeschlossen, wenn das OpenWB Web-Interface erreichbar ist
 
 ## Zusammenfassung der Befehle
 
-### Standard-Installation
+### 🚀 Methode 1: Direkt auf Trixie (SCHNELLSTE Option!)
 
+**Nutzt System-Python, keine Kompilierung (~10-15 Min):**
 ```bash
-# Nach Raspberry Pi OS Installation und erstem Login:
-sudo apt update && sudo apt upgrade -y
-sudo reboot
+# Voraussetzung: Debian Trixie bereits installiert
+curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh | bash
+```
 
-# Trixie-Update
+**Oder manuell:**
+```bash
+# System auf Trixie upgraden (falls noch Bookworm)
 sudo apt install git -y
 git clone https://github.com/Xerolux/openwb-trixie.git
 cd openwb-trixie
@@ -315,21 +369,54 @@ chmod +x update_to_trixie.sh
 ./update_to_trixie.sh
 sudo reboot
 
-# Python 3.9.23 Installation
+# venv mit System-Python erstellen (KEINE Kompilierung!)
 cd openwb-trixie
 chmod +x install_python3.9.sh
-./install_python3.9.sh
-sudo reboot
+./install_python3.9.sh --venv-only
 
 # OpenWB Installation
 curl -s https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh | sudo bash
 sudo reboot
 ```
 
-### Installation mit Virtual Environment (empfohlen)
+### Methode 2: Bookworm -> Trixie mit venv (empfohlen)
 
+**Mit automatischem Post-Update Hook (~40-50 Min):**
 ```bash
-# Nach Raspberry Pi OS Installation und erstem Login:
+# Nach Raspberry Pi OS Bookworm Installation:
+sudo apt update && sudo apt upgrade -y
+sudo reboot
+
+# Komplette Installation mit venv (nutzt System-Python)
+curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_complete.sh | bash -s -- --with-venv
+```
+
+**Oder manuell:**
+```bash
+# Trixie-Update
+sudo apt install git -y
+git clone https://github.com/Xerolux/openwb-trixie.git
+cd openwb-trixie
+chmod +x update_to_trixie.sh
+./update_to_trixie.sh
+sudo reboot
+
+# venv Setup (nutzt System-Python, KEINE Kompilierung!)
+cd openwb-trixie
+chmod +x install_python3.9.sh
+./install_python3.9.sh --venv-only
+# Post-Update Hook wird automatisch installiert!
+
+# OpenWB Installation
+curl -s https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh | sudo bash
+sudo reboot
+```
+
+### Methode 3: Legacy mit Python 3.9.23 Kompilierung
+
+**Nur für spezielle Kompatibilitätsanforderungen (~60-90 Min):**
+```bash
+# Nach Raspberry Pi OS Installation:
 sudo apt update && sudo apt upgrade -y
 sudo reboot
 
@@ -341,32 +428,27 @@ chmod +x update_to_trixie.sh
 ./update_to_trixie.sh
 sudo reboot
 
-# Python 3.9.23 Installation mit venv
+# Python 3.9.23 kompilieren (dauert 30-60 Min!)
 cd openwb-trixie
 chmod +x install_python3.9.sh
-./install_python3.9.sh --with-venv
+./install_python3.9.sh  # ohne Flag
 sudo reboot
 
 # OpenWB Installation
 curl -s https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh | sudo bash
 sudo reboot
-
-# Post-Update Hook installieren (optional, aber empfohlen)
-cd openwb-trixie
-sudo cp openwb_post_update_hook.sh /var/www/html/openWB/data/config/post-update.sh
-sudo chmod +x /var/www/html/openWB/data/config/post-update.sh
 ```
 
 ### Nur venv erstellen/aktualisieren
 
+**Wenn System bereits Trixie ist:**
 ```bash
-# Wenn Python bereits installiert ist und du nur das venv möchtest:
 cd openwb-trixie
 ./install_python3.9.sh --venv-only
 
-# Oder direkt mit dem Setup-Script:
+# Oder direkt:
 ./setup_venv.sh
 
-# venv aktualisieren:
+# Aktualisieren:
 ./setup_venv.sh --update
 ```
