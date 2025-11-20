@@ -7,8 +7,47 @@
 # 3. Python 3.9.23 Installation
 # 4. OpenWB Installation
 # 5. Automatische Neustarts
+#
+# Optionen:
+#   --with-venv    Installiert Python mit isoliertem venv (empfohlen)
+#   --help         Zeigt diese Hilfe
 
 set -e  # Script bei Fehlern beenden
+
+# Parse Argumente
+USE_VENV=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --with-venv)
+            USE_VENV=true
+            shift
+            ;;
+        --continue)
+            # Wird intern für Fortsetzung verwendet
+            shift
+            break
+            ;;
+        --help|-h)
+            echo "OpenWB Trixie - Komplette Installation"
+            echo ""
+            echo "Verwendung: $0 [OPTIONEN]"
+            echo ""
+            echo "Optionen:"
+            echo "  (keine)         Standard-Installation"
+            echo "  --with-venv     Mit isoliertem Virtual Environment (empfohlen)"
+            echo "  --help          Zeigt diese Hilfe"
+            echo ""
+            echo "Mit --with-venv werden Python-Pakete isoliert installiert"
+            echo "und überleben OpenWB-Updates"
+            exit 0
+            ;;
+        *)
+            # Unbekannte Argumente weitergeben
+            shift
+            ;;
+    esac
+done
 
 # Farben für Ausgabe
 RED='\033[0;31m'
@@ -177,19 +216,31 @@ main() {
     # Schritt 3: Python 3.9.23 Installation
     if [ -z "$continue_step" ] || [ "$continue_step" = "3" ]; then
         log "=== Schritt 3: Python 3.9.23 Installation ==="
-        
+
         cd /home/openwb/openwb-trixie
-        
+
         # Prüfe ob Python 3.9.23 bereits installiert ist
         if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
             log "Python 3.9.23 bereits installiert, überspringe..."
+
+            # Wenn venv gewünscht, aber noch nicht installiert
+            if [ "$USE_VENV" = true ] && [ ! -d "/opt/openwb-venv" ]; then
+                log "Erstelle Virtual Environment..."
+                chmod +x install_python3.9.sh
+                ./install_python3.9.sh --venv-only
+            fi
         else
             log "Python 3.9.23 wird installiert..."
             chmod +x install_python3.9.sh
-            
+
             # Führe Installation automatisch aus (mit 'y' Antwort)
-            echo "y" | ./install_python3.9.sh
-            
+            if [ "$USE_VENV" = true ]; then
+                log "Installation mit Virtual Environment..."
+                echo "y" | ./install_python3.9.sh --with-venv
+            else
+                echo "y" | ./install_python3.9.sh
+            fi
+
             log_warning "Python-Installation abgeschlossen, Neustart erforderlich"
             reboot_and_continue "4"
         fi
@@ -249,11 +300,22 @@ main() {
         echo "Zusammenfassung:"
         echo "- Debian Trixie: $(lsb_release -c 2>/dev/null || echo "Prüfe manuell mit 'lsb_release -a'")"
         echo "- Python Version: $(python3 --version 2>/dev/null || echo "Fehler beim Abrufen")"
+
+        if [ "$USE_VENV" = true ] && [ -d "/opt/openwb-venv" ]; then
+            echo "- Virtual Environment: /opt/openwb-venv (✓ installiert)"
+            echo "  Aktivieren: openwb-activate"
+        fi
+
         echo "- OpenWB Status: $(systemctl is-active openwb 2>/dev/null || echo "Prüfe manuell mit 'systemctl status openwb'")"
         echo ""
         echo "Nächste Schritte:"
         echo "1. Öffne einen Browser und gehe zu: http://$(hostname -I | awk '{print $1}')"
         echo "2. Konfiguriere OpenWB über das Web-Interface"
+
+        if [ "$USE_VENV" = true ]; then
+            echo "3. Bei Python-Skripten: Nutze 'openwb-activate python script.py'"
+        fi
+
         echo ""
         log_success "Installation erfolgreich beendet!"
     fi

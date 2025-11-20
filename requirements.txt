@@ -1,0 +1,29 @@
+# OpenWB Python Requirements
+# Diese Datei enthält alle Python-Abhängigkeiten für OpenWB
+# Version: 1.0.0
+
+# GPIO-Zugriff für Raspberry Pi
+rpi-lgpio>=0.4.0
+
+# MQTT Client für Messaging
+paho-mqtt>=1.6.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Serielle Kommunikation (Modbus, etc.)
+pyserial>=3.5
+
+# JSON Schema Validierung
+jsonschema>=4.17.0
+
+# Zeitzone-Unterstützung
+pytz>=2023.3
+
+# Weitere häufig benötigte Pakete
+pyyaml>=6.0
+python-dateutil>=2.8.0
+
+# Optional: Für erweiterte Funktionen
+# numpy>=1.24.0
+# pandas>=2.0.0
