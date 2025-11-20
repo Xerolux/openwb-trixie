@@ -2,8 +2,59 @@
 
 # Python 3.9.23 kompilieren und installieren
 # WARNUNG: make install überschreibt die Standard-Python-Installation!
+#
+# Optionen:
+#   --with-venv    Erstellt zusätzlich ein isoliertes venv für OpenWB
+#   --venv-only    Überspringt Python-Installation, erstellt nur venv
+#   --help         Zeigt diese Hilfe
 
-echo "=== Python 3.9.23 Kompilierung startet ==="
+# Parse Argumente
+INSTALL_VENV=false
+VENV_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --with-venv)
+            INSTALL_VENV=true
+            shift
+            ;;
+        --venv-only)
+            VENV_ONLY=true
+            INSTALL_VENV=true
+            shift
+            ;;
+        --help|-h)
+            echo "Verwendung: $0 [OPTIONEN]"
+            echo ""
+            echo "Optionen:"
+            echo "  (keine)         Standardinstallation (überschreibt System-Python)"
+            echo "  --with-venv     Installiert Python + erstellt isoliertes venv"
+            echo "  --venv-only     Überspringt Python-Installation, erstellt nur venv"
+            echo "  --help          Zeigt diese Hilfe"
+            echo ""
+            echo "Empfohlen: --with-venv für produktive Umgebungen"
+            exit 0
+            ;;
+        *)
+            echo "Unbekannte Option: $1"
+            echo "Verwende --help für Hilfe"
+            exit 1
+            ;;
+    esac
+done
+
+echo "=== Python 3.9.23 Installation ==="
+if [ "$VENV_ONLY" = true ]; then
+    echo "Modus: Nur venv-Erstellung"
+elif [ "$INSTALL_VENV" = true ]; then
+    echo "Modus: Python-Installation + venv"
+else
+    echo "Modus: Standard (Python-Installation ohne venv)"
+fi
+echo ""
+
+# Überspringe Python-Installation wenn --venv-only
+if [ "$VENV_ONLY" = false ]; then
 
 # 0. OpenWB Konfiguration zu /boot/firmware/config.txt hinzufügen
 echo "0. OpenWB Konfiguration wird zu /boot/firmware/config.txt hinzugefügt..."
@@ -179,6 +230,7 @@ if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
 else
     echo "Installation abgebrochen."
     echo "Tipp: Verwenden Sie 'make altinstall' für eine sichere Installation"
+    exit 1
 fi
 
 # Aufräumen
@@ -186,4 +238,45 @@ echo "Temporäre Dateien werden bereinigt..."
 cd /
 rm -rf /tmp/Python-3.9.23*
 
+fi  # Ende von if [ "$VENV_ONLY" = false ]
+
+# Virtual Environment Setup (wenn --with-venv oder --venv-only)
+if [ "$INSTALL_VENV" = true ]; then
+    echo ""
+    echo "=== Virtual Environment Setup ==="
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    VENV_SETUP="$SCRIPT_DIR/setup_venv.sh"
+
+    if [ ! -f "$VENV_SETUP" ]; then
+        echo "FEHLER: setup_venv.sh nicht gefunden: $VENV_SETUP"
+        echo "venv-Setup wird übersprungen"
+    else
+        echo "Führe venv-Setup aus..."
+        chmod +x "$VENV_SETUP"
+        bash "$VENV_SETUP"
+
+        if [ $? -eq 0 ]; then
+            echo "✓ Virtual Environment erfolgreich eingerichtet"
+            echo ""
+            echo "Verwendung:"
+            echo "  1. Aktivieren: source /opt/openwb-venv/bin/activate"
+            echo "  2. Wrapper: openwb-activate python script.py"
+            echo "  3. Update: $0 --venv-only"
+        else
+            echo "✗ Fehler beim venv-Setup"
+            exit 1
+        fi
+    fi
+fi
+
+echo ""
 echo "=== Script beendet ==="
+
+if [ "$INSTALL_VENV" = true ]; then
+    echo ""
+    echo "Empfehlung:"
+    echo "- Verwende das venv für alle OpenWB-Python-Skripte"
+    echo "- Das venv überlebt OpenWB-Updates"
+    echo "- Aktualisiere das venv nach Updates mit: $0 --venv-only"
+fi
