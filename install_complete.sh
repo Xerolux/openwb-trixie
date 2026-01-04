@@ -97,7 +97,7 @@ curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_com
 EOF
     
     # Nächsten Schritt speichern
-    echo "$next_step" > /tmp/crete_install_step
+    echo "$next_step" > /tmp/openwb_install_step
     chmod +x /tmp/openwb_install_continue.sh
     
     # Fortsetzung in systemd-Unit einrichten
