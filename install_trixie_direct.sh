@@ -42,9 +42,13 @@ echo "Dieses Script installiert OpenWB auf einem FRISCHEN Trixie-System"
 echo ""
 echo "Was wird gemacht:"
 echo "  1. System aktualisieren"
-echo "  2. GPIO-Konfiguration"
-echo "  3. Virtual Environment mit System-Python (schnell!)"
-echo "  4. OpenWB Installation"
+echo "  2. Build-Abhängigkeiten installieren (SWIG, gcc, etc.)"
+echo "  3. Repository vorbereiten"
+echo "  4. GPIO-Konfiguration"
+echo "  5. PHP konfigurieren"
+echo "  6. Virtual Environment mit System-Python (schnell!)"
+echo "  7. OpenWB Installation"
+echo "  8. Post-Update Hook einrichten"
 echo ""
 echo "Vorteile:"
 echo "  ✓ Keine Python-Kompilierung (spart 30-60 Min!)"
@@ -77,8 +81,20 @@ log "=== Schritt 1: System aktualisieren ==="
 sudo apt update
 sudo apt upgrade -y
 
-# Schritt 2: Git installieren und Repository klonen (falls nicht vorhanden)
-log "=== Schritt 2: Repository vorbereiten ==="
+# Schritt 2: Build-Abhängigkeiten installieren
+log "=== Schritt 2: Build-Abhängigkeiten installieren ==="
+log "Installiere SWIG und Entwicklungs-Tools für Python-Pakete..."
+sudo apt install -y \
+    swig \
+    build-essential \
+    python3-dev \
+    python3-pip \
+    pkg-config \
+    libffi-dev
+log_success "Build-Abhängigkeiten erfolgreich installiert"
+
+# Schritt 3: Git installieren und Repository klonen (falls nicht vorhanden)
+log "=== Schritt 3: Repository vorbereiten ==="
 
 if [ ! -d "/home/openwb/openwb-trixie" ]; then
     log "Git installieren..."
@@ -93,8 +109,8 @@ else
     cd /home/openwb/openwb-trixie
 fi
 
-# Schritt 3: GPIO-Konfiguration
-log "=== Schritt 3: GPIO-Konfiguration ==="
+# Schritt 4: GPIO-Konfiguration
+log "=== Schritt 4: GPIO-Konfiguration ==="
 
 log "Konfiguriere /boot/firmware/config.txt für OpenWB..."
 sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.backup.$(date +%Y%m%d_%H%M%S)
@@ -131,15 +147,15 @@ else
     log "GPIO-Konfiguration bereits vorhanden"
 fi
 
-# Schritt 4: PHP Upload-Limits konfigurieren
-log "=== Schritt 4: PHP konfigurieren ==="
+# Schritt 5: PHP Upload-Limits konfigurieren
+log "=== Schritt 5: PHP konfigurieren ==="
 sudo mkdir -p /etc/php/8.4/apache2/conf.d/ 2>/dev/null || true
 echo "upload_max_filesize = 300M" | sudo tee /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
 echo "post_max_size = 300M" | sudo tee -a /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
 log_success "PHP Upload-Limits auf 300M gesetzt"
 
-# Schritt 5: Virtual Environment erstellen
-log "=== Schritt 5: Virtual Environment Setup ==="
+# Schritt 6: Virtual Environment erstellen
+log "=== Schritt 6: Virtual Environment Setup ==="
 log "Nutzt System-Python - KEINE Kompilierung nötig!"
 
 chmod +x install_python3.9.sh
@@ -152,8 +168,8 @@ fi
 
 log_success "Virtual Environment erfolgreich erstellt"
 
-# Schritt 6: OpenWB Installation
-log "=== Schritt 6: OpenWB Installation ==="
+# Schritt 7: OpenWB Installation
+log "=== Schritt 7: OpenWB Installation ==="
 
 # Prüfe ob OpenWB bereits installiert ist
 if [ -f "/var/www/html/openWB/openwb.sh" ] || [ -f "/home/openwb/openwb/openwb.sh" ]; then
@@ -164,8 +180,8 @@ else
     log_success "OpenWB erfolgreich installiert"
 fi
 
-# Schritt 7: Post-Update Hook installieren
-log "=== Schritt 7: Post-Update Hook einrichten ==="
+# Schritt 8: Post-Update Hook installieren
+log "=== Schritt 8: Post-Update Hook einrichten ==="
 
 if [ -f "openwb_post_update_hook.sh" ]; then
     OPENWB_DIRS=(
