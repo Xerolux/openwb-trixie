@@ -289,7 +289,7 @@ if [ "$INSTALL_VENV" = true ]; then
     else
         echo "Führe venv-Setup aus..."
         chmod +x "$VENV_SETUP"
-        bash "$VENV_SETUP"
+        OPENWB_VENV_NONINTERACTIVE=1 bash "$VENV_SETUP"
 
         if [ $? -eq 0 ]; then
             echo "✓ Virtual Environment erfolgreich eingerichtet"

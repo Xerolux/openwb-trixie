@@ -3,6 +3,8 @@
 # Version: 1.0.0
 
 # GPIO-Zugriff für Raspberry Pi
+# Hinweis: Wird auf Debian Trixie über das Systempaket python3-rpi-lgpio installiert,
+# um Kompilierungsfehler in 64-Bit-Umgebungen zu vermeiden. Im venv muss nichts nachinstalliert werden.
 rpi-lgpio>=0.4.0
 
 # MQTT Client für Messaging
