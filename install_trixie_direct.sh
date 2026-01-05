@@ -91,6 +91,8 @@ sudo apt install -y \
     python3-pip \
     python3-rpi-lgpio \
     pkg-config \
+    liblgpio-dev \
+    libgpiod-dev \
     libffi-dev
 log_success "Build-Abhängigkeiten erfolgreich installiert"
 
