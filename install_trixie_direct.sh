@@ -89,6 +89,7 @@ sudo apt install -y \
     build-essential \
     python3-dev \
     python3-pip \
+    python3-rpi-lgpio \
     pkg-config \
     libffi-dev
 log_success "Build-Abhängigkeiten erfolgreich installiert"
@@ -159,7 +160,8 @@ log "=== Schritt 6: Virtual Environment Setup ==="
 log "Nutzt System-Python - KEINE Kompilierung nötig!"
 
 chmod +x install_python3.9.sh
-./install_python3.9.sh --venv-only
+# Non-interaktiver venv-Setup ohne Rückfragen
+OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only
 
 if [ $? -ne 0 ]; then
     log_error "Fehler beim venv-Setup"

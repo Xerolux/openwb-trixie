@@ -6,6 +6,9 @@
 
 set -e  # Bei Fehlern beenden
 
+# Automatischer Modus für unbeaufsichtigte Aufrufe (z.B. aus Hooks)
+OPENWB_VENV_NONINTERACTIVE=${OPENWB_VENV_NONINTERACTIVE:-0}
+
 # Farben für Ausgabe
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -52,10 +55,14 @@ check_python() {
     # Empfehlung für Python 3.9
     if [[ ! $PYTHON_VERSION =~ ^3\.9\. ]]; then
         log_warning "OpenWB empfiehlt Python 3.9.x, gefunden: $PYTHON_VERSION"
-        read -p "Trotzdem fortfahren? (j/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Jj]$ ]]; then
-            exit 1
+        if [[ "$OPENWB_VENV_NONINTERACTIVE" != "1" ]]; then
+            read -p "Trotzdem fortfahren? (j/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+                exit 1
+            fi
+        else
+            log_warning "Nicht-interaktiver Modus aktiv – fahre mit System-Python fort"
         fi
     fi
 }
@@ -74,15 +81,21 @@ create_venv() {
             log "Existierende venv-Version: ${VENV_VERSION_INSTALLED:-unbekannt}"
         fi
 
-        read -p "Möchtest du es neu erstellen? (j/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Jj]$ ]]; then
-            log_warning "Lösche existierendes venv..."
-            sudo rm -rf "$VENV_DIR"
-        else
-            log "Überspringe venv-Erstellung, führe Update durch..."
+        if [[ "$OPENWB_VENV_NONINTERACTIVE" = "1" ]]; then
+            log "Nicht-interaktiver Modus: Überspringe Neuaufbau und aktualisiere bestehendes venv"
             update_venv
             return 0
+        else
+            read -p "Möchtest du es neu erstellen? (j/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Jj]$ ]]; then
+                log_warning "Lösche existierendes venv..."
+                sudo rm -rf "$VENV_DIR"
+            else
+                log "Überspringe venv-Erstellung, führe Update durch..."
+                update_venv
+                return 0
+            fi
         fi
     fi
 
@@ -99,16 +112,45 @@ create_venv() {
         sudo chown -R $USER:$USER "$VENV_DIR"
     fi
 
-    # Erstelle venv
+    # Erstelle venv (inkl. Systempakete für Hardware-Treiber)
     log "Erstelle Virtual Environment..."
-    python3 -m venv "$VENV_DIR"
+    python3 -m venv --system-site-packages "$VENV_DIR"
 
     log_success "Virtual Environment erfolgreich erstellt"
+}
+
+filter_requirements() {
+    local filtered_file="$1"
+
+    # rpi-lgpio wird als Systempaket installiert, um Build-Fehler auf 64-bit-Systemen zu vermeiden
+    if grep -q '^rpi-lgpio' "$REQUIREMENTS_FILE"; then
+        log "Überspringe rpi-lgpio in pip (wird als Systempaket installiert)"
+    fi
+
+    grep -v '^rpi-lgpio' "$REQUIREMENTS_FILE" > "$filtered_file"
+}
+
+install_system_rpilgpio() {
+    if ! grep -q '^rpi-lgpio' "$REQUIREMENTS_FILE"; then
+        return
+    fi
+
+    log "Stelle Systempaket python3-rpi-lgpio bereit..."
+
+    if dpkg -s python3-rpi-lgpio >/dev/null 2>&1; then
+        log "python3-rpi-lgpio bereits installiert"
+    else
+        sudo apt-get update
+        sudo apt-get install -y python3-rpi-lgpio
+    fi
 }
 
 # Installiere Abhängigkeiten
 install_dependencies() {
     log "=== Installiere Python-Abhängigkeiten ==="
+
+    # Stelle Systemabhängigkeiten bereit (für rpi-lgpio)
+    install_system_rpilgpio
 
     # Aktiviere venv
     source "$VENV_DIR/bin/activate"
@@ -123,17 +165,27 @@ install_dependencies() {
         exit 1
     fi
 
-    # Installiere Requirements
+    local filtered_requirements
+    filtered_requirements=$(mktemp)
+    filter_requirements "$filtered_requirements"
+
+    # Installiere Requirements (ohne rpi-lgpio)
     log "Installiere Pakete aus requirements.txt..."
-    pip install -r "$REQUIREMENTS_FILE"
+    pip install -r "$filtered_requirements"
 
     # Speichere installierte Pakete
     log "Speichere installierte Pakete..."
     pip freeze > "$VENV_DIR/installed_requirements.txt"
 
+    # Dokumentiere Systempaket in der Liste
+    if dpkg -s python3-rpi-lgpio >/dev/null 2>&1; then
+        echo "rpi-lgpio (Systempaket python3-rpi-lgpio)" >> "$VENV_DIR/installed_requirements.txt"
+    fi
+
     # Kopiere requirements.txt für Vergleiche
     cp "$REQUIREMENTS_FILE" "$VENV_DIR/requirements.txt"
 
+    rm -f "$filtered_requirements"
     deactivate
     log_success "Abhängigkeiten erfolgreich installiert"
 }
@@ -167,6 +219,9 @@ update_venv() {
         return 0
     fi
 
+    # Stelle Systemabhängigkeiten bereit (für rpi-lgpio)
+    install_system_rpilgpio
+
     # Aktiviere venv
     source "$VENV_DIR/bin/activate"
 
@@ -174,25 +229,33 @@ update_venv() {
     log "Upgrade pip..."
     pip install --upgrade pip
 
+    local filtered_requirements
+    filtered_requirements=$(mktemp)
+    filter_requirements "$filtered_requirements"
+
     # Prüfe ob requirements.txt sich geändert hat
     if [ -f "$VENV_DIR/requirements.txt" ]; then
         if ! diff -q "$REQUIREMENTS_FILE" "$VENV_DIR/requirements.txt" &>/dev/null; then
             log_warning "requirements.txt hat sich geändert"
             log "Installiere neue Abhängigkeiten..."
-            pip install -r "$REQUIREMENTS_FILE"
+            pip install -r "$filtered_requirements"
         else
             log "requirements.txt unverändert, upgrade existierende Pakete..."
-            pip install --upgrade -r "$REQUIREMENTS_FILE"
+            pip install --upgrade -r "$filtered_requirements"
         fi
     else
         log "Keine vorherige requirements.txt gefunden, installiere alle..."
-        pip install -r "$REQUIREMENTS_FILE"
+        pip install -r "$filtered_requirements"
     fi
 
     # Speichere neue Version
     pip freeze > "$VENV_DIR/installed_requirements.txt"
+    if dpkg -s python3-rpi-lgpio >/dev/null 2>&1; then
+        echo "rpi-lgpio (Systempaket python3-rpi-lgpio)" >> "$VENV_DIR/installed_requirements.txt"
+    fi
     cp "$REQUIREMENTS_FILE" "$VENV_DIR/requirements.txt"
 
+    rm -f "$filtered_requirements"
     deactivate
     log_success "venv erfolgreich aktualisiert"
 }
