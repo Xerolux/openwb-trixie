@@ -146,6 +146,8 @@ sudo apt-get -q -y install \
     libsqlite3-dev \
     libreadline-dev \
     libffi-dev \
+    liblgpio-dev \
+    libgpiod-dev \
     libbz2-dev \
     liblzma-dev \
     libgdbm-compat-dev \
