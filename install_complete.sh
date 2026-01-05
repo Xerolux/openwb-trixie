@@ -78,6 +78,13 @@ reboot_and_continue() {
     local next_step=$1
     log_warning "Erstelle Fortsetzungsscript für nächsten Schritt: $next_step"
     
+    # Save VENV state
+    if [ "$USE_VENV" = true ]; then
+        echo "--with-venv" > /tmp/openwb_install_args
+    else
+        echo "" > /tmp/openwb_install_args
+    fi
+
     # Aktuelles Script und Fortschritt speichern
     cat > /tmp/openwb_install_continue.sh << 'EOF'
 #!/bin/bash
@@ -92,8 +99,14 @@ else
     exit 1
 fi
 
+ARGS="--continue $STEP"
+if [ -f /tmp/openwb_install_args ]; then
+    EXTRA_ARGS=$(cat /tmp/openwb_install_args)
+    ARGS="$ARGS $EXTRA_ARGS"
+fi
+
 # Lade das ursprüngliche Script erneut
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_complete.sh | bash -s -- --continue $STEP
+curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_complete.sh | bash -s -- $ARGS
 EOF
     
     # Nächsten Schritt speichern
@@ -132,6 +145,7 @@ cleanup() {
     sudo rm -f /etc/systemd/system/openwb-install-continue.service
     sudo systemctl daemon-reload
     rm -f /tmp/openwb_install_step
+    rm -f /tmp/openwb_install_args
     rm -f /tmp/openwb_install_continue.sh
     rm -f /tmp/openwb-install-continue.service
 }
@@ -287,10 +301,18 @@ main() {
         log "Überprüfe Systemstatus..."
         
         # Python-Version prüfen
-        if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
-            log_success "Python 3.9.23 erfolgreich installiert"
+        if [ "$USE_VENV" = true ]; then
+            if python3 --version &>/dev/null; then
+                log_success "Python $(python3 --version 2>&1) installiert (System-Python)"
+            else
+                log_error "Python nicht gefunden"
+            fi
         else
-            log_error "Python 3.9.23 nicht korrekt installiert"
+            if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
+                log_success "Python 3.9.23 erfolgreich installiert"
+            else
+                log_error "Python 3.9.23 nicht korrekt installiert"
+            fi
         fi
         
         # Trixie-Version prüfen
