@@ -119,11 +119,19 @@ sudo apt install -y \
     build-essential \
     python3-dev \
     python3-pip \
-    python3-rpi-lgpio \
+    python3-venv \
     pkg-config \
     liblgpio-dev \
     libgpiod-dev \
     libffi-dev
+
+# python3-rpi-lgpio separat installieren (existiert nur auf Raspberry Pi)
+if apt-cache show python3-rpi-lgpio &>/dev/null; then
+    sudo apt install -y python3-rpi-lgpio
+    log_success "python3-rpi-lgpio installiert"
+else
+    log_warning "python3-rpi-lgpio nicht verfügbar (kein Raspberry Pi?)"
+fi
 log_success "Build-Abhängigkeiten erfolgreich installiert"
 
 # Schritt 3: Git installieren und Repository klonen (falls nicht vorhanden)
@@ -145,19 +153,30 @@ fi
 # Schritt 4: GPIO-Konfiguration
 log "=== Schritt 4: GPIO-Konfiguration ==="
 
-log "Konfiguriere /boot/firmware/config.txt für OpenWB..."
-sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.backup.$(date +%Y%m%d_%H%M%S)
+# Ermittle korrekten config.txt Pfad (neu: /boot/firmware/, alt: /boot/)
+if [ -f "/boot/firmware/config.txt" ]; then
+    CONFIG_TXT="/boot/firmware/config.txt"
+elif [ -f "/boot/config.txt" ]; then
+    CONFIG_TXT="/boot/config.txt"
+else
+    log_warning "config.txt nicht gefunden - GPIO-Konfiguration übersprungen"
+    CONFIG_TXT=""
+fi
 
-# Audio deaktivieren
-sudo sed -i 's/dtparam=audio=on/dtparam=audio=off/g' /boot/firmware/config.txt
+if [ -n "$CONFIG_TXT" ]; then
+    log "Konfiguriere $CONFIG_TXT für OpenWB..."
+    sudo cp "$CONFIG_TXT" "${CONFIG_TXT}.backup.$(date +%Y%m%d_%H%M%S)"
 
-# vc4-kms-v3d auskommentieren
-sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' /boot/firmware/config.txt
+    # Audio deaktivieren
+    sudo sed -i 's/dtparam=audio=on/dtparam=audio=off/g' "$CONFIG_TXT"
 
-# OpenWB Konfiguration hinzufügen (falls noch nicht vorhanden)
-if ! grep -q "# openwb - begin" /boot/firmware/config.txt; then
-    log "Füge OpenWB-Konfiguration hinzu..."
-    sudo tee -a /boot/firmware/config.txt > /dev/null << 'EOF'
+    # vc4-kms-v3d auskommentieren
+    sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' "$CONFIG_TXT"
+
+    # OpenWB Konfiguration hinzufügen (falls noch nicht vorhanden)
+    if ! grep -q "# openwb - begin" "$CONFIG_TXT"; then
+        log "Füge OpenWB-Konfiguration hinzu..."
+        sudo tee -a "$CONFIG_TXT" > /dev/null << 'EOF'
 # openwb - begin
 # openwb-version:4
 # Do not edit this section! We need begin/end and version for proper updates!
@@ -175,9 +194,10 @@ enable_uart=1
 avoid_warnings=1
 # openwb - end
 EOF
-    log_success "GPIO-Konfiguration hinzugefügt"
-else
-    log "GPIO-Konfiguration bereits vorhanden"
+        log_success "GPIO-Konfiguration hinzugefügt"
+    else
+        log "GPIO-Konfiguration bereits vorhanden"
+    fi
 fi
 
 # Schritt 5: PHP Upload-Limits konfigurieren
@@ -193,14 +213,12 @@ log "Nutzt System-Python - KEINE Kompilierung nötig!"
 
 chmod +x install_python3.9.sh
 # Non-interaktiver venv-Setup ohne Rückfragen
-OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only
-
-if [ $? -ne 0 ]; then
+if OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only; then
+    log_success "Virtual Environment erfolgreich erstellt"
+else
     log_error "Fehler beim venv-Setup"
     exit 1
 fi
-
-log_success "Virtual Environment erfolgreich erstellt"
 
 # Schritt 7: OpenWB Installation
 log "=== Schritt 7: OpenWB Installation ==="
