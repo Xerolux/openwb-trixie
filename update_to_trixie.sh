@@ -6,6 +6,27 @@
 
 set -e  # Script bei Fehlern beenden
 
+# Hilfe anzeigen
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "Debian Bookworm zu Trixie Update Script"
+    echo ""
+    echo "Verwendung: $0 [OPTIONEN]"
+    echo ""
+    echo "Optionen:"
+    echo "  --help, -h    Zeigt diese Hilfe"
+    echo ""
+    echo "Dieses Script führt folgende Schritte durch:"
+    echo "  1. Aktuelle Paketliste aktualisieren"
+    echo "  2. Backup der sources.list erstellen"
+    echo "  3. Repositories von Bookworm auf Trixie umstellen"
+    echo "  4. Vollständiges System-Upgrade (apt full-upgrade)"
+    echo "  5. Aufräumen (autoremove, autoclean)"
+    echo ""
+    echo "WARNUNG: Dies ist ein Major-Version-Update!"
+    echo "Erstelle vorher ein vollständiges System-Backup!"
+    exit 0
+fi
+
 echo "=== Debian Bookworm zu Trixie Update ==="
 echo "WARNUNG: Dieses Script führt ein Major-Version-Update durch!"
 echo "Stelle sicher, dass du ein vollständiges System-Backup hast."

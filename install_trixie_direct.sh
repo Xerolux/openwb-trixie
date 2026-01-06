@@ -10,6 +10,36 @@
 
 set -e  # Script bei Fehlern beenden
 
+# Hilfe anzeigen
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "OpenWB Installation für Debian Trixie"
+    echo ""
+    echo "Verwendung: $0 [OPTIONEN]"
+    echo ""
+    echo "Optionen:"
+    echo "  --help, -h    Zeigt diese Hilfe"
+    echo ""
+    echo "Dieses Script ist für FRISCHE Debian Trixie Installationen!"
+    echo ""
+    echo "Was wird gemacht:"
+    echo "  1. System aktualisieren"
+    echo "  2. Build-Abhängigkeiten installieren (SWIG, gcc, etc.)"
+    echo "  3. Repository vorbereiten"
+    echo "  4. GPIO-Konfiguration"
+    echo "  5. PHP konfigurieren"
+    echo "  6. Virtual Environment mit System-Python erstellen"
+    echo "  7. OpenWB Installation"
+    echo "  8. Post-Update Hook einrichten"
+    echo ""
+    echo "Vorteile:"
+    echo "  - Keine Python-Kompilierung (spart 30-60 Min!)"
+    echo "  - Nutzt modernes Debian Trixie Python (3.12+)"
+    echo "  - Installation in ~10-15 Minuten"
+    echo ""
+    echo "Für Bookworm -> Trixie Upgrade nutze: install_complete.sh"
+    exit 0
+fi
+
 # Farben für Ausgabe
 RED='\033[0;31m'
 GREEN='\033[0;32m'
