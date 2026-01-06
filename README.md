@@ -197,7 +197,7 @@ curl -s https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh |
 
 ## Schritt 6: Finaler Neustart und Test
 
-### 6.1 System neuzuuuu starten
+### 6.1 System neu starten
 ```bash
 sudo reboot
 ```
@@ -452,3 +452,76 @@ cd openwb-trixie
 # Aktualisieren:
 ./setup_venv.sh --update
 ```
+
+## Skript-Referenz
+
+Alle Skripte unterstützen `--help` für detaillierte Informationen.
+
+### install_trixie_direct.sh
+**Schnellste Option für frische Trixie-Systeme**
+```bash
+./install_trixie_direct.sh [--help]
+```
+- Für Systeme die **bereits Debian Trixie** verwenden
+- Nutzt System-Python mit venv (keine Kompilierung)
+- Installation in ~10-15 Minuten
+- Installiert automatisch: GPIO-Config, PHP-Limits, venv, OpenWB, Post-Update Hook
+
+### install_complete.sh
+**Komplette Installation mit Trixie-Upgrade**
+```bash
+./install_complete.sh [--with-venv] [--help]
+```
+| Option | Beschreibung |
+|--------|--------------|
+| (keine) | Legacy: Kompiliert Python 3.9.23 (~60-90 Min) |
+| --with-venv | Modern: Nutzt System-Python + venv (~40-50 Min) |
+| --help | Zeigt Hilfe |
+
+- Automatische Neustarts und Fortsetzung
+- Für Bookworm → Trixie Upgrade
+
+### install_python3.9.sh
+**Python Installation und venv Setup**
+```bash
+./install_python3.9.sh [--with-venv|--venv-only] [--help]
+```
+| Option | Beschreibung |
+|--------|--------------|
+| (keine) | Legacy: Kompiliert Python 3.9.23 (30-60 Min) |
+| --with-venv | GPIO-Config + venv mit System-Python |
+| --venv-only | Nur venv erstellen/aktualisieren |
+| --help | Zeigt Hilfe |
+
+### update_to_trixie.sh
+**Debian Bookworm → Trixie Upgrade**
+```bash
+./update_to_trixie.sh [--help]
+```
+- Erstellt Backups der sources.list
+- Führt `apt full-upgrade` durch
+- Neustart erforderlich nach Abschluss
+
+### setup_venv.sh
+**Virtual Environment Verwaltung**
+```bash
+./setup_venv.sh [--update] [--help]
+```
+| Option | Beschreibung |
+|--------|--------------|
+| (keine) | Erstellt neues venv |
+| --update | Aktualisiert bestehendes venv |
+| --help | Zeigt Hilfe |
+
+- Erstellt venv in `/opt/openwb-venv`
+- Installiert Pakete aus `requirements.txt`
+- Erstellt Wrapper `openwb-activate`
+
+### openwb_post_update_hook.sh
+**Automatische venv-Updates nach OpenWB-Updates**
+```bash
+./openwb_post_update_hook.sh [--help]
+```
+- Wird automatisch nach OpenWB-Updates ausgeführt
+- Aktualisiert Python-Pakete im venv
+- Installation: Kopieren nach `/var/www/html/openWB/data/config/post-update.sh`

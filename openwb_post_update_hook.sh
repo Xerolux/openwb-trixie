@@ -7,6 +7,28 @@
 
 set -e
 
+# Hilfe anzeigen
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "OpenWB Post-Update Hook"
+    echo ""
+    echo "Verwendung: $0 [OPTIONEN]"
+    echo ""
+    echo "Optionen:"
+    echo "  --help, -h    Zeigt diese Hilfe"
+    echo ""
+    echo "Dieses Script wird automatisch nach OpenWB-Updates ausgeführt."
+    echo ""
+    echo "Was wird gemacht:"
+    echo "  1. Prüft ob venv existiert (/opt/openwb-venv)"
+    echo "  2. Aktualisiert Python-Pakete aus requirements.txt"
+    echo "  3. Startet OpenWB-Services neu (optional)"
+    echo ""
+    echo "Installation:"
+    echo "  sudo cp openwb_post_update_hook.sh /var/www/html/openWB/data/config/post-update.sh"
+    echo "  sudo chmod +x /var/www/html/openWB/data/config/post-update.sh"
+    exit 0
+fi
+
 # Farben
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -87,7 +109,6 @@ if [ ! -f "$SETUP_SCRIPT" ]; then
     if [ -f "$REQUIREMENTS_FILE" ]; then
         install_system_rpilgpio
 
-        local filtered_requirements
         filtered_requirements=$(mktemp)
 
         if ! filter_requirements "$filtered_requirements"; then
