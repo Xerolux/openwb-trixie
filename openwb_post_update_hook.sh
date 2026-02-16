@@ -136,9 +136,7 @@ if [ ! -f "$SETUP_SCRIPT" ]; then
 else
     # Führe Setup-Script im Update-Modus aus
     log "Führe venv-Update aus..."
-    OPENWB_VENV_NONINTERACTIVE=1 bash "$SETUP_SCRIPT" --update
-
-    if [ $? -eq 0 ]; then
+    if OPENWB_VENV_NONINTERACTIVE=1 bash "$SETUP_SCRIPT" --update; then
         log_success "venv erfolgreich aktualisiert"
     else
         log_error "Fehler beim venv-Update"
@@ -150,11 +148,11 @@ fi
 if command -v systemctl &> /dev/null; then
     log "Prüfe OpenWB-Services..."
 
-    # Liste der möglichen OpenWB-Services
-    SERVICES=("openwb" "openwb.service" "openwb2" "openwb2.service")
+    # Liste der möglichen OpenWB-Services (ohne .service-Suffix, systemctl erkennt beides)
+    SERVICES=("openwb" "openwb2")
 
     for service in "${SERVICES[@]}"; do
-        if systemctl list-units --full -all | grep -q "$service"; then
+        if systemctl is-enabled "$service" &>/dev/null; then
             log "Starte $service neu..."
             sudo systemctl restart "$service" || log_warning "Konnte $service nicht neustarten"
         fi

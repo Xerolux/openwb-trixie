@@ -11,6 +11,8 @@
 #   --venv-only    Nur venv erstellen/aktualisieren (KEINE Python-Installation)
 #   --help         Zeigt diese Hilfe
 
+set -e  # Script bei Fehlern beenden
+
 # Parse Argumente
 INSTALL_VENV=false
 VENV_ONLY=false
@@ -87,20 +89,33 @@ echo ""
 # Überspringe Python-Kompilierung wenn venv verwendet wird
 if [ "$INSTALL_VENV" = false ]; then
 
-# 0. OpenWB Konfiguration zu /boot/firmware/config.txt hinzufügen
-echo "0. OpenWB Konfiguration wird zu /boot/firmware/config.txt hinzugefügt..."
-sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
+# 0. OpenWB Konfiguration zu config.txt hinzufügen
+echo "0. OpenWB Konfiguration wird hinzugefügt..."
 
-# Audio deaktivieren (dtparam=audio=on zu dtparam=audio=off)
-echo "Audio wird deaktiviert..."
-sudo sed -i 's/dtparam=audio=on/dtparam=audio=off/g' /boot/firmware/config.txt
+# Ermittle korrekten config.txt Pfad
+if [ -f "/boot/firmware/config.txt" ]; then
+    CONFIG_TXT="/boot/firmware/config.txt"
+elif [ -f "/boot/config.txt" ]; then
+    CONFIG_TXT="/boot/config.txt"
+else
+    echo "WARNUNG: config.txt nicht gefunden - GPIO-Konfiguration übersprungen"
+    CONFIG_TXT=""
+fi
 
-# vc4-kms-v3d auskommentieren
-echo "vc4-kms-v3d wird auskommentiert..."
-sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' /boot/firmware/config.txt
+if [ -n "$CONFIG_TXT" ]; then
+    sudo cp "$CONFIG_TXT" "${CONFIG_TXT}.backup.$(date +%Y%m%d_%H%M%S)"
 
-# OpenWB Konfiguration hinzufügen
-sudo tee -a /boot/firmware/config.txt > /dev/null << 'EOF'
+    # Audio deaktivieren (dtparam=audio=on zu dtparam=audio=off)
+    echo "Audio wird deaktiviert..."
+    sudo sed -i 's/dtparam=audio=on/dtparam=audio=off/g' "$CONFIG_TXT"
+
+    # vc4-kms-v3d auskommentieren
+    echo "vc4-kms-v3d wird auskommentiert..."
+    sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' "$CONFIG_TXT"
+
+    # OpenWB Konfiguration hinzufügen (nur wenn noch nicht vorhanden)
+    if ! grep -q "# openwb - begin" "$CONFIG_TXT"; then
+        sudo tee -a "$CONFIG_TXT" > /dev/null << 'EOF'
 # openwb - begin
 # openwb-version:4
 # Do not edit this section! We need begin/end and version for proper updates!
@@ -118,9 +133,12 @@ enable_uart=1
 avoid_warnings=1
 # openwb - end
 EOF
-
-echo "OpenWB Konfiguration hinzugefügt. Backup erstellt als /boot/firmware/config.txt.backup"
-echo "Audio deaktiviert (dtparam=audio=off) und vc4-kms-v3d auskommentiert"
+        echo "OpenWB Konfiguration hinzugefügt. Backup erstellt als ${CONFIG_TXT}.backup.*"
+    else
+        echo "OpenWB Konfiguration bereits vorhanden, überspringe..."
+    fi
+    echo "Audio deaktiviert (dtparam=audio=off) und vc4-kms-v3d auskommentiert"
+fi
 
 # 1. System aktualisieren
 echo "1. System wird aktualisiert..."
@@ -204,9 +222,9 @@ else
     make -j$jobs
 fi
 
-# 7. Tests ausführen (optional, aber empfohlen)
+# 7. Tests ausführen (optional - Testfehler sollen Installation nicht abbrechen)
 echo "7. Tests werden ausgeführt..."
-make test
+make test || echo "WARNUNG: Einige Tests fehlgeschlagen (kann ignoriert werden)"
 
 # 8. Installation (WARNUNG: Überschreibt Standard-Python!)
 echo "8. Installation wird durchgeführt..."
@@ -291,9 +309,7 @@ if [ "$INSTALL_VENV" = true ]; then
     else
         echo "Führe venv-Setup aus..."
         chmod +x "$VENV_SETUP"
-        OPENWB_VENV_NONINTERACTIVE=1 bash "$VENV_SETUP"
-
-        if [ $? -eq 0 ]; then
+        if OPENWB_VENV_NONINTERACTIVE=1 bash "$VENV_SETUP"; then
             echo "✓ Virtual Environment erfolgreich eingerichtet"
             echo ""
 
