@@ -194,7 +194,7 @@ install_dependencies() {
 create_config() {
     log "Erstelle venv-Konfiguration..."
 
-    cat > "$VENV_CONFIG" << EOF
+    sudo tee "$VENV_CONFIG" > /dev/null << EOF
 # OpenWB venv Configuration
 # Diese Datei wird automatisch generiert
 VENV_VERSION_INSTALLED="$VENV_VERSION"
@@ -202,6 +202,11 @@ VENV_CREATED="$(date +'%Y-%m-%d %H:%M:%S')"
 VENV_PYTHON_VERSION="$(python3 --version 2>&1 | awk '{print $2}')"
 VENV_DIR="$VENV_DIR"
 EOF
+
+    # Eigentümer korrigieren
+    if id "openwb" &>/dev/null; then
+        sudo chown openwb:openwb "$VENV_CONFIG"
+    fi
 
     log_success "Konfiguration erstellt: $VENV_CONFIG"
 }
@@ -310,7 +315,7 @@ create_systemd_helper() {
 
     local helper="/opt/openwb-venv/systemd-environment"
 
-    cat > "$helper" << EOF
+    sudo tee "$helper" > /dev/null << EOF
 # OpenWB venv Environment für systemd Services
 # Füge diese Datei zu deinen systemd Services hinzu:
 # [Service]
@@ -320,6 +325,11 @@ PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin
 VIRTUAL_ENV=$VENV_DIR
 PYTHONHOME=
 EOF
+
+    # Eigentümer korrigieren
+    if id "openwb" &>/dev/null; then
+        sudo chown openwb:openwb "$helper"
+    fi
 
     log_success "systemd Helper erstellt: $helper"
     log "Füge 'EnvironmentFile=$helper' zu deinen OpenWB systemd Services hinzu"

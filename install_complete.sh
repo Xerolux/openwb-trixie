@@ -16,6 +16,7 @@ set -e  # Script bei Fehlern beenden
 
 # Parse Argumente
 USE_VENV=false
+CONTINUE_STEP=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -24,9 +25,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --continue)
-            # Wird intern für Fortsetzung verwendet
+            # Wird intern für Fortsetzung nach Neustart verwendet
             shift
-            break
+            CONTINUE_STEP="${1:-}"
+            shift
             ;;
         --help|-h)
             echo "OpenWB Trixie - Komplette Installation"
@@ -43,7 +45,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            # Unbekannte Argumente weitergeben
+            # Unbekannte Argumente ignorieren
             shift
             ;;
     esac
@@ -152,11 +154,9 @@ cleanup() {
 
 # Hauptfunktion
 main() {
-    local continue_step=""
-    
-    # Überprüfe ob wir ein continue-Flag haben
-    if [ "$1" = "--continue" ]; then
-        continue_step="$2"
+    local continue_step="$CONTINUE_STEP"
+
+    if [ -n "$continue_step" ]; then
         log "Fortsetzung der Installation ab Schritt: $continue_step"
     fi
     
@@ -235,22 +235,13 @@ main() {
             log "=== Schritt 3: Virtual Environment Setup (nutzt System-Python) ==="
             log "✓ Keine Python-Kompilierung nötig (spart 30-60 Min!)"
 
-            # Prüfe ob venv bereits existiert
-            if [ -d "/opt/openwb-venv" ]; then
-                log "venv bereits vorhanden, aktualisiere..."
-                chmod +x install_python3.9.sh
-                ./install_python3.9.sh --venv-only
+            log "Erstelle/aktualisiere Virtual Environment mit System-Python..."
+            chmod +x install_python3.9.sh
+            if OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only; then
+                log_success "venv erfolgreich erstellt/aktualisiert"
             else
-                log "Erstelle Virtual Environment mit System-Python..."
-                chmod +x install_python3.9.sh
-                ./install_python3.9.sh --venv-only
-
-                if [ $? -eq 0 ]; then
-                    log_success "venv erfolgreich erstellt"
-                else
-                    log_error "Fehler beim venv-Setup"
-                    exit 1
-                fi
+                log_error "Fehler beim venv-Setup"
+                exit 1
             fi
 
             # Kein Neustart nötig bei venv-only Installation
@@ -362,4 +353,4 @@ main() {
 trap 'log_error "Fehler in Zeile $LINENO. Prüfe die Logs und führe die Installation manuell fort."' ERR
 
 # Script ausführen
-main "$@"
+main
