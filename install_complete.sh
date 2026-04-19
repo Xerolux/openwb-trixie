@@ -12,7 +12,7 @@
 #   --with-venv    Installiert Python mit isoliertem venv (empfohlen)
 #   --help         Zeigt diese Hilfe
 
-set -e  # Script bei Fehlern beenden
+set -Ee -o pipefail  # Script bei Fehlern beenden
 
 # Parse Argumente
 USE_VENV=false
@@ -73,6 +73,68 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ✗${NC} $1"
+}
+
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    log_error "Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    log_error "Tipp: Bei Python/PEP668-Problemen '--with-venv' nutzen und openwb2 auf venv prüfen."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
+configure_openwb_venv_runtime() {
+    local openwb_dir="$1"
+    local venv_python="/opt/openwb-venv/bin/python3"
+    local venv_pip="/opt/openwb-venv/bin/pip3"
+    local service_file="$openwb_dir/data/config/openwb2.service"
+    local remote_service_file="/etc/systemd/system/openwbRemoteSupport.service"
+    local atreboot_file="$openwb_dir/runs/atreboot.sh"
+
+    if [ ! -d "$openwb_dir" ]; then
+        return 0
+    fi
+
+    if [ ! -x "$venv_python" ] || [ ! -x "$venv_pip" ]; then
+        log_warning "venv-Python/Pip nicht gefunden, überspringe Runtime-Anpassungen"
+        return 0
+    fi
+
+    if [ -f "$service_file" ]; then
+        log "Passe openwb2.service auf venv-Python an..."
+        sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/packages/main.py#g" "$service_file"
+    fi
+
+    if [ -f "$atreboot_file" ]; then
+        log "Passe atreboot.sh auf venv-pip an (PEP668-sicher)..."
+        sudo sed -i "s#\\([^[:alnum:]_/.-]\\|^\\)pip3 install -r#\\1$venv_pip install -r#g" "$atreboot_file"
+    fi
+
+    if [ -f "$remote_service_file" ]; then
+        log "Passe openwbRemoteSupport.service auf venv-Python an..."
+        sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/runs/remoteSupport/remoteSupport.py#g" "$remote_service_file"
+    fi
+
+    sudo systemctl daemon-reload || true
+    log_success "openWB Runtime auf venv umgestellt (falls Dateien vorhanden)"
+}
+
+is_trixie() {
+    if [ -r /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        if [ "${VERSION_CODENAME:-}" = "trixie" ] || printf '%s\n' "${VERSION:-}" | grep -qi 'trixie'; then
+            return 0
+        fi
+    fi
+
+    if command -v lsb_release >/dev/null 2>&1 && lsb_release -c 2>/dev/null | grep -q "trixie"; then
+        return 0
+    fi
+
+    grep -q "trixie" /etc/debian_version 2>/dev/null
 }
 
 # Hilfsfunktion für Neustarts
@@ -213,7 +275,7 @@ main() {
         cd /home/openwb/openwb-trixie
         
         # Prüfe ob bereits Trixie installiert ist
-        if grep -q "trixie" /etc/debian_version 2>/dev/null || lsb_release -c 2>/dev/null | grep -q "trixie"; then
+        if is_trixie; then
             log "Trixie bereits installiert, überspringe..."
         else
             log "Trixie-Update wird durchgeführt..."
@@ -280,6 +342,19 @@ main() {
             log_success "OpenWB erfolgreich installiert"
             reboot_and_continue "5"
         fi
+
+        if [ "$USE_VENV" = true ]; then
+            OPENWB_RUNTIME_DIR=""
+            for candidate in "/var/www/html/openWB" "/home/openwb/openWB" "/home/openwb/openwb" "/opt/openWB"; do
+                if [ -d "$candidate" ]; then
+                    OPENWB_RUNTIME_DIR="$candidate"
+                    break
+                fi
+            done
+            if [ -n "$OPENWB_RUNTIME_DIR" ]; then
+                configure_openwb_venv_runtime "$OPENWB_RUNTIME_DIR"
+            fi
+        fi
     fi
     
     # Schritt 5: Finale Überprüfung und Cleanup
@@ -307,7 +382,7 @@ main() {
         fi
         
         # Trixie-Version prüfen
-        if lsb_release -c 2>/dev/null | grep -q "trixie" || grep -q "trixie" /etc/debian_version 2>/dev/null; then
+        if is_trixie; then
             log_success "Debian Trixie erfolgreich installiert"
         else
             log_error "Debian Trixie nicht korrekt installiert"
@@ -326,7 +401,13 @@ main() {
         log_success "=== Installation abgeschlossen! ==="
         echo ""
         echo "Zusammenfassung:"
-        echo "- Debian Trixie: $(lsb_release -c 2>/dev/null || echo "Prüfe manuell mit 'lsb_release -a'")"
+        if [ -r /etc/os-release ]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            echo "- Debian Trixie: ${VERSION_CODENAME:-${VERSION_ID:-unbekannt}}"
+        else
+            echo "- Debian Trixie: $(lsb_release -c 2>/dev/null || echo "Prüfe manuell mit 'lsb_release -a'")"
+        fi
         echo "- Python Version: $(python3 --version 2>/dev/null || echo "Fehler beim Abrufen")"
 
         if [ "$USE_VENV" = true ] && [ -d "/opt/openwb-venv" ]; then
@@ -348,9 +429,6 @@ main() {
         log_success "Installation erfolgreich beendet!"
     fi
 }
-
-# Fehlerbehandlung
-trap 'log_error "Fehler in Zeile $LINENO. Prüfe die Logs und führe die Installation manuell fort."' ERR
 
 # Script ausführen
 main

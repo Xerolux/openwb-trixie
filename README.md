@@ -1,23 +1,21 @@
-# OpenWB auf Debian Trixie Installation - Komplette Anleitung
+# OpenWB auf Debian Trixie - Einfache Anleitung
 
-## 🚀 Schnellstart
+## 🚀 Start Hier (Kurz & Sicher)
 
-### Für frische Trixie-Installation (EMPFOHLEN - spart 30-60 Min!)
+### 1) Welchen Weg brauchst du?
+- **Frisches Debian Trixie System**: nutze `install_trixie_direct.sh` (empfohlen)
+- **Bookworm → Trixie Upgrade**: nutze `install_complete.sh --with-venv`
+- **Nur venv reparieren/aktualisieren**: nutze `install_python3.9.sh --venv-only`
 
-**One-Liner für Debian Trixie (nutzt System-Python, keine Kompilierung!):**
+### 2) Standardweg für Trixie (empfohlen)
 ```bash
 curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh | bash
 ```
 
-**Was passiert:**
-- ✓ Nutzt System-Python (3.12+) - KEINE Kompilierung!
-- ✓ Erstellt isoliertes venv in `/opt/openwb-venv`
-- ✓ Überlebt OpenWB-Updates automatisch
-- ✓ Installation in ~10-15 Minuten (statt 60-90 Min!)
-
-### Für Bookworm -> Trixie Upgrade
-
-Falls du von Bookworm upgraden willst, folge der [vollständigen Anleitung unten](#schritt-1-raspberry-pi-os-bookworm-light-64-bit-installieren).
+### 3) Erwartetes Ergebnis
+- OpenWB nutzt **venv** unter `/opt/openwb-venv` (kein System-pip nötig)
+- `openwb2` ist der relevante Dienst (nicht `openwb`)
+- Python im System bleibt modern (z. B. 3.12/3.13/3.14/3.15), venv ist kompatibel mit `>=3.9`
 
 ---
 
@@ -114,6 +112,7 @@ chmod +x install_python3.9.sh
 **Vorteile:**
 - ✅ **Keine Python-Kompilierung** (spart 30-60 Minuten!)
 - ✅ Nutzt modernes **Debian Trixie Python 3.12+**
+- ✅ venv ist kompatibel mit **Python 3.14 / 3.15**
 - ✅ **Isolierte Paket-Installation** (venv)
 - ✅ **Überlebt OpenWB-Updates** automatisch
 - ✅ Post-Update Hook wird automatisch installiert
@@ -162,8 +161,8 @@ sudo reboot  # Nur bei Legacy-Modus nötig
 
 ### 4.4 Python-Installation testen
 ```bash
-python3 --version  # Sollte Python 3.9.23 anzeigen
-python --version   # Sollte Python 3.9.23 anzeigen
+python3 --version  # Im venv-Modus: System-Python (z.B. 3.12/3.13/3.14/3.15)
+python --version   # Kann identisch mit python3 sein
 pip3 --version
 ```
 
@@ -311,15 +310,52 @@ cat /opt/openwb-venv/.openwb-venv-config
 
 ### 🔧 Bei Problemen
 
+**Schnell-Diagnose (60 Sekunden):**
+```bash
+sudo systemctl status openwb2 --no-pager
+journalctl -u openwb2 -n 120 --no-pager
+sudo systemctl status mosquitto --no-pager
+python3 --version
+/opt/openwb-venv/bin/python3 --version
+```
+
+**Typische Fehlermeldungen und klare Lösung:**
+- **`error: externally-managed-environment`**
+  Lösung: OpenWB muss über venv laufen, nicht über System-`pip`.
+  ```bash
+  cd ~/openwb-trixie
+  OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only
+  sudo sed -i 's#^ExecStart=.*#ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/packages/main.py#' /var/www/html/openWB/data/config/openwb2.service
+  sudo sed -i 's#\([^[:alnum:]_/.-]\|^\)pip3 install -r#\1/opt/openwb-venv/bin/pip3 install -r#g' /var/www/html/openWB/runs/atreboot.sh
+  sudo systemctl daemon-reload
+  sudo systemctl restart openwb2
+  ```
+- **`Unit openwb.service could not be found`**
+  Lösung: Das ist bei software2 normal. Verwende `openwb2`.
+  ```bash
+  sudo systemctl status openwb2 --no-pager
+  ```
+- **WebUI meldet `ErrorWithSubackPacket: Connection closed`**
+  Lösung: MQTT/OpenWB-Dienst prüfen und neu starten.
+  ```bash
+  sudo systemctl restart mosquitto
+  sudo systemctl restart openwb2
+  ```
+- **Display/Web bleibt bei „Der Systemstart ist noch nicht abgeschlossen“**
+  Lösung: Meist startet `openwb2` nicht sauber. `journalctl -u openwb2` prüfen und venv-Fix oben anwenden.
+
 **Allgemein:**
-- Überprüfe die Logs: `journalctl -u openwb`
+- Überprüfe die Logs: `journalctl -u openwb2`
 - Python-Version prüfen: `python3 --version`
 - GPIO-Konfiguration prüfen: `cat /boot/firmware/config.txt`
 - Bei Fehlern: Backup-Dateien wiederherstellen
+- `openwb.service` gibt es bei Software2 meist nicht: Status mit `sudo systemctl status openwb2` prüfen
 
 **venv-spezifisch:**
 - **venv existiert nicht**: Führe `./install_python3.9.sh --venv-only` aus
 - **Paket-Fehler**: Aktualisiere mit `./setup_venv.sh --update`
+- **python3-rpi-lgpio nicht gefunden**: Auf Debian-VMs ohne Raspberry-Pi-Repos normal; wird automatisch übersprungen
+- **`externally-managed-environment` (PEP668)**: Installer stellt `openwb2.service` und `runs/atreboot.sh` automatisch auf `/opt/openwb-venv` um
 - **openwb-activate nicht gefunden**: Prüfe `/usr/local/bin/openwb-activate`
 - **Berechtigungsfehler**: `sudo chown -R openwb:openwb /opt/openwb-venv`
 - **venv neu erstellen**:
@@ -337,7 +373,7 @@ cat /opt/openwb-venv/.openwb-venv-config
 - Post-Update Hook: `/var/www/html/openWB/data/config/post-update.sh`
 - GPIO-Konfiguration: `/boot/firmware/config.txt`
 - PHP-Konfiguration: `/etc/php/8.4/apache2/conf.d/20-uploadlimit.ini`
-- Backup der Repository-Listen: `/etc/apt/sources.list.backup.*`
+- Backup der APT-Quellen: `/etc/apt/sources.list*.backup.*` und `/etc/apt/sources.list.d/*.backup.*`
 
 ### 🔧 SSH-Verbindung mit PuTTY
 1. Lade PuTTY herunter: https://www.putty.org/
@@ -498,7 +534,7 @@ Alle Skripte unterstützen `--help` für detaillierte Informationen.
 ```bash
 ./update_to_trixie.sh [--help]
 ```
-- Erstellt Backups der sources.list
+- Erstellt Backups aller APT-Quellen (`/etc/apt/sources.list`, `*.list`, `*.sources`)
 - Führt `apt full-upgrade` durch
 - Neustart erforderlich nach Abschluss
 
@@ -525,3 +561,26 @@ Alle Skripte unterstützen `--help` für detaillierte Informationen.
 - Wird automatisch nach OpenWB-Updates ausgeführt
 - Aktualisiert Python-Pakete im venv
 - Installation: Kopieren nach `/var/www/html/openWB/data/config/post-update.sh`
+
+## Lokale Docker-Tests (Maintainer)
+
+Mit diesen Checks kannst du die Skripte schnell lokal validieren:
+
+```bash
+# 1) Syntax aller Shell-Skripte prüfen
+docker run --rm -v "$PWD:/work" -w /work debian:trixie-slim \
+  bash -lc 'for f in *.sh; do bash -n "$f"; done'
+
+# 2) Hilfe-Ausgaben prüfen (smoke test)
+docker run --rm -v "$PWD:/work" -w /work debian:trixie-slim \
+  bash -lc './install_complete.sh --help && ./install_python3.9.sh --help && ./install_trixie_direct.sh --help && ./openwb_post_update_hook.sh --help && ./setup_venv.sh --help && ./update_to_trixie.sh --help'
+
+# 3) Laufzeittest für Trixie-Erkennung (bricht nach Prompt absichtlich ab)
+docker run --rm -v "$PWD:/work" -w /work debian:trixie-slim \
+  bash -lc 'printf "n\n" | ./install_trixie_direct.sh'
+```
+
+Hinweise:
+- Repository erzwingt LF-Zeilenenden für Shell-Skripte über `.gitattributes`.
+- In Docker-`trixie-slim` ist `/etc/debian_version` numerisch (z. B. `13.x`); die Skripte nutzen deshalb zusätzlich `/etc/os-release` zur Trixie-Erkennung.
+- `setup_venv.sh` unterstützt Python `>=3.9` (System-Python unter Trixie ist daher direkt nutzbar).

@@ -11,7 +11,18 @@
 #   --venv-only    Nur venv erstellen/aktualisieren (KEINE Python-Installation)
 #   --help         Zeigt diese Hilfe
 
-set -e  # Script bei Fehlern beenden
+set -Ee -o pipefail  # Script bei Fehlern beenden
+
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    echo "✗ Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    echo "  Häufige Ursachen: fehlende apt-Pakete, Netzwerkproblem oder PEP668 bei System-pip."
+    echo "  Tipp: Für stabile Installation nutze '--venv-only' oder '--with-venv'."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 # Parse Argumente
 INSTALL_VENV=false
@@ -39,7 +50,8 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "  --with-venv     Modern: Nutzt System-Python + venv (EMPFOHLEN!)"
             echo "                  ✓ Keine Kompilierung (spart 30-60 Min)"
-            echo "                  ✓ Nutzt Trixie Python 3.12+"
+            echo "                  ✓ Nutzt Trixie System-Python (3.12+)"
+            echo "                  ✓ Kompatibel mit Python 3.14 / 3.15 im venv-Modus"
             echo "                  ✓ Überlebt OpenWB-Updates"
             echo ""
             echo "  --venv-only     Nur venv erstellen/aktualisieren"
@@ -298,6 +310,10 @@ if [ "$INSTALL_VENV" = true ]; then
     echo "   Virtual Environment Setup"
     echo "====================================================================="
 
+    echo "Installiere benötigte venv-Systempakete..."
+    sudo apt-get update
+    sudo apt-get install -y python3 python3-venv python3-pip
+
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     VENV_SETUP="$SCRIPT_DIR/setup_venv.sh"
     POST_UPDATE_HOOK="$SCRIPT_DIR/openwb_post_update_hook.sh"
@@ -375,6 +391,8 @@ if [ "$INSTALL_VENV" = true ]; then
             echo ""
         else
             echo "✗ Fehler beim venv-Setup"
+            echo "  Prüfe die Ausgabe oberhalb (klarer Fehlerhinweis durch setup_venv.sh)."
+            echo "  Kurztest: OPENWB_VENV_NONINTERACTIVE=1 ./setup_venv.sh --update"
             exit 1
         fi
     fi

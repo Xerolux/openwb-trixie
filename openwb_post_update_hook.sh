@@ -70,9 +70,11 @@ install_system_rpilgpio() {
 
     if dpkg -s python3-rpi-lgpio >/dev/null 2>&1; then
         log "python3-rpi-lgpio bereits installiert"
-    else
+    elif apt-cache show python3-rpi-lgpio >/dev/null 2>&1; then
         sudo apt-get update
         sudo apt-get install -y python3-rpi-lgpio
+    else
+        log_warning "python3-rpi-lgpio nicht im APT-Repository verfügbar - überspringe Systempaket"
     fi
 }
 

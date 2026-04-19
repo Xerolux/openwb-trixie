@@ -8,7 +8,7 @@
 # Nutzt System-Python mit venv - KEINE Python-Kompilierung!
 # Spart 30-60 Minuten Installationszeit!
 
-set -e  # Script bei Fehlern beenden
+set -Ee -o pipefail  # Script bei Fehlern beenden
 
 # Hilfe anzeigen
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
@@ -64,6 +64,90 @@ log_error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ✗${NC} $1"
 }
 
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    log_error "Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    log_error "Häufige Ursachen: fehlendes sudo-Recht, apt-Lock, Netzwerkproblem oder PEP668-Fehler im OpenWB-Installer."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
+configure_openwb_venv_runtime() {
+    local openwb_dir="$1"
+    local venv_python="/opt/openwb-venv/bin/python3"
+    local venv_pip="/opt/openwb-venv/bin/pip3"
+    local service_file="$openwb_dir/data/config/openwb2.service"
+    local remote_service_file="/etc/systemd/system/openwbRemoteSupport.service"
+    local atreboot_file="$openwb_dir/runs/atreboot.sh"
+
+    if [ ! -d "$openwb_dir" ]; then
+        return 0
+    fi
+
+    if [ ! -x "$venv_python" ] || [ ! -x "$venv_pip" ]; then
+        log_warning "venv-Python/Pip nicht gefunden, überspringe Runtime-Anpassungen"
+        return 0
+    fi
+
+    if [ -f "$service_file" ]; then
+        log "Passe openwb2.service auf venv-Python an..."
+        sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/packages/main.py#g" "$service_file"
+    else
+        log_warning "openwb2.service nicht gefunden: $service_file"
+    fi
+
+    if [ -f "$atreboot_file" ]; then
+        log "Passe atreboot.sh auf venv-pip an (PEP668-sicher)..."
+        sudo sed -i "s#\\([^[:alnum:]_/.-]\\|^\\)pip3 install -r#\\1$venv_pip install -r#g" "$atreboot_file"
+    else
+        log_warning "atreboot.sh nicht gefunden: $atreboot_file"
+    fi
+
+    if [ -f "$remote_service_file" ]; then
+        log "Passe openwbRemoteSupport.service auf venv-Python an..."
+        sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/runs/remoteSupport/remoteSupport.py#g" "$remote_service_file"
+    fi
+
+    sudo systemctl daemon-reload || true
+    log_success "openWB Runtime auf venv umgestellt (falls Dateien vorhanden)"
+}
+
+show_service_status() {
+    log "=== Service-Status (Kurzcheck) ==="
+    if command -v systemctl >/dev/null 2>&1; then
+        for service in mosquitto openwb2 openwb-simpleAPI; do
+            if systemctl list-unit-files "${service}.service" >/dev/null 2>&1; then
+                status=$(systemctl is-active "$service" 2>/dev/null || true)
+                if [ "$status" = "active" ]; then
+                    log_success "$service ist aktiv"
+                else
+                    log_warning "$service ist nicht aktiv (Status: ${status:-unbekannt})"
+                fi
+            fi
+        done
+    else
+        log_warning "systemctl nicht verfügbar - Statuscheck übersprungen"
+    fi
+}
+
+is_trixie() {
+    if [ -r /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        if [ "${VERSION_CODENAME:-}" = "trixie" ] || printf '%s\n' "${VERSION:-}" | grep -qi 'trixie'; then
+            return 0
+        fi
+    fi
+
+    if command -v lsb_release >/dev/null 2>&1 && lsb_release -c 2>/dev/null | grep -q "trixie"; then
+        return 0
+    fi
+
+    grep -q "trixie" /etc/debian_version 2>/dev/null
+}
+
 echo "====================================================================="
 echo "   OpenWB Installation für Debian Trixie"
 echo "====================================================================="
@@ -88,7 +172,7 @@ echo "  ✓ Überlebt OpenWB-Updates automatisch"
 echo ""
 
 # Prüfe ob bereits Trixie läuft
-if ! grep -q "trixie" /etc/debian_version 2>/dev/null && ! lsb_release -c 2>/dev/null | grep -q "trixie"; then
+if ! is_trixie; then
     log_error "Dieses System läuft NICHT auf Debian Trixie!"
     echo ""
     echo "Optionen:"
@@ -232,6 +316,18 @@ else
     log_success "OpenWB erfolgreich installiert"
 fi
 
+# PEP668/externally-managed vermeiden: OpenWB Runtime auf venv umstellen
+OPENWB_RUNTIME_DIR=""
+for candidate in "/var/www/html/openWB" "/home/openwb/openWB" "/opt/openWB"; do
+    if [ -d "$candidate" ]; then
+        OPENWB_RUNTIME_DIR="$candidate"
+        break
+    fi
+done
+if [ -n "$OPENWB_RUNTIME_DIR" ]; then
+    configure_openwb_venv_runtime "$OPENWB_RUNTIME_DIR"
+fi
+
 # Schritt 8: Post-Update Hook installieren
 log "=== Schritt 8: Post-Update Hook einrichten ==="
 
@@ -269,7 +365,13 @@ if [ -d "/opt/openwb-venv" ]; then
 fi
 
 # Trixie-Version prüfen
-TRIXIE_VERSION=$(lsb_release -c 2>/dev/null | awk '{print $2}' || cat /etc/debian_version)
+if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    TRIXIE_VERSION="${VERSION_CODENAME:-${VERSION_ID:-unbekannt}}"
+else
+    TRIXIE_VERSION=$(lsb_release -c 2>/dev/null | awk '{print $2}' || cat /etc/debian_version)
+fi
 log "Debian Version: $TRIXIE_VERSION"
 
 echo ""
@@ -301,6 +403,8 @@ echo "  ✓ venv überlebt OpenWB-Updates automatisch"
 echo "  ✓ Automatische venv-Updates nach OpenWB-Updates"
 echo ""
 echo "====================================================================="
+
+show_service_status
 
 log_warning "Ein Neustart wird empfohlen für GPIO-Konfiguration!"
 read -p "Jetzt neustarten? (j/N): " -n 1 -r

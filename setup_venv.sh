@@ -4,7 +4,7 @@
 # Dieses Script erstellt und verwaltet ein venv für OpenWB
 # Das venv überlebt OpenWB-Updates, da es außerhalb des OpenWB-Verzeichnisses liegt
 
-set -e  # Bei Fehlern beenden
+set -Ee -o pipefail  # Bei Fehlern beenden
 
 # Automatischer Modus für unbeaufsichtigte Aufrufe (z.B. aus Hooks)
 OPENWB_VENV_NONINTERACTIVE=${OPENWB_VENV_NONINTERACTIVE:-0}
@@ -39,7 +39,7 @@ log_error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ✗${NC} $1"
 }
 
-# Prüfe ob Python 3.9 installiert ist
+# Prüfe ob Python-Version unterstützt ist (venv: 3.9 - 3.15 getestet)
 check_python() {
     log "Prüfe Python-Installation..."
 
@@ -52,18 +52,28 @@ check_python() {
     PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
     log_success "Python $PYTHON_VERSION gefunden"
 
-    # Empfehlung für Python 3.9
-    if [[ ! $PYTHON_VERSION =~ ^3\.9\. ]]; then
-        log_warning "OpenWB empfiehlt Python 3.9.x, gefunden: $PYTHON_VERSION"
-        if [[ "$OPENWB_VENV_NONINTERACTIVE" != "1" ]]; then
-            read -p "Trotzdem fortfahren? (j/N): " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Jj]$ ]]; then
-                exit 1
-            fi
-        else
-            log_warning "Nicht-interaktiver Modus aktiv – fahre mit System-Python fort"
-        fi
+    local py_major py_minor py_rest
+    py_major="${PYTHON_VERSION%%.*}"
+    py_rest="${PYTHON_VERSION#*.}"
+    py_minor="${py_rest%%.*}"
+
+    if ! [[ "$py_major" =~ ^[0-9]+$ && "$py_minor" =~ ^[0-9]+$ ]]; then
+        log_error "Konnte Python-Version nicht auswerten: $PYTHON_VERSION"
+        log_error "Bitte prüfe 'python3 --version' manuell"
+        exit 1
+    fi
+
+    if [ "$py_major" -lt 3 ] || { [ "$py_major" -eq 3 ] && [ "$py_minor" -lt 9 ]; }; then
+        log_error "Python >= 3.9 erforderlich, gefunden: $PYTHON_VERSION"
+        exit 1
+    fi
+
+    if [ "$py_major" -eq 3 ] && [ "$py_minor" -gt 15 ]; then
+        log_warning "Python $PYTHON_VERSION ist neuer als getestet (getestet bis 3.15)"
+    fi
+
+    if [ "$py_major" -eq 3 ] && { [ "$py_minor" -eq 14 ] || [ "$py_minor" -eq 15 ]; }; then
+        log_success "Python $PYTHON_VERSION ist explizit unterstützt (3.14/3.15 kompatibel)"
     fi
 }
 
@@ -139,9 +149,11 @@ install_system_rpilgpio() {
 
     if dpkg -s python3-rpi-lgpio >/dev/null 2>&1; then
         log "python3-rpi-lgpio bereits installiert"
-    else
+    elif apt-cache show python3-rpi-lgpio >/dev/null 2>&1; then
         sudo apt-get update
         sudo apt-get install -y python3-rpi-lgpio
+    else
+        log_warning "python3-rpi-lgpio nicht im APT-Repository verfügbar (z. B. Debian-VM ohne Raspberry-Pi-Repo) - überspringe Systempaket"
     fi
 }
 
@@ -405,8 +417,16 @@ main() {
     log_success "=== Installation abgeschlossen! ==="
 }
 
-# Fehlerbehandlung
-trap 'log_error "Fehler in Zeile $LINENO"' ERR
+# Fehlerbehandlung mit klarer Ausgabe
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    log_error "Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    log_error "Tipp: Prüfe auch /opt/openwb-venv und die apt-/pip-Ausgaben direkt oberhalb."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 # Script ausführen
 main "$@"

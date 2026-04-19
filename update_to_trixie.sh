@@ -4,7 +4,18 @@
 # WARNUNG: Führe dieses Script nur aus, wenn du verstehst, was es tut!
 # Erstelle vorher ein Backup deines Systems!
 
-set -e  # Script bei Fehlern beenden
+set -Ee -o pipefail  # Script bei Fehlern beenden
+
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    echo "FEHLER in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    echo "Hinweis: Backups wurden unter '*.backup.<timestamp>' abgelegt."
+    echo "Prüfe Netz/apt-Lock und starte den Schritt erneut."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 # Hilfe anzeigen
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
@@ -45,29 +56,36 @@ sudo apt upgrade -y
 
 echo ""
 echo "=== Schritt 2: Sources.list Backup erstellen ==="
-sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup.$(date +%Y%m%d_%H%M%S)
-if [ -f /etc/apt/sources.list.d/raspi.list ]; then
-    sudo cp /etc/apt/sources.list.d/raspi.list /etc/apt/sources.list.d/raspi.list.backup.$(date +%Y%m%d_%H%M%S)
+backup_ts=$(date +%Y%m%d_%H%M%S)
+source_files=()
+
+if [ -f /etc/apt/sources.list ]; then
+    source_files+=("/etc/apt/sources.list")
 fi
+
+shopt -s nullglob
+for file in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    source_files+=("$file")
+done
+shopt -u nullglob
+
+if [ ${#source_files[@]} -eq 0 ]; then
+    echo "FEHLER: Keine APT-Quellen gefunden (weder sources.list noch *.sources/*.list)"
+    exit 1
+fi
+
+for file in "${source_files[@]}"; do
+    sudo cp "$file" "${file}.backup.${backup_ts}"
+done
 
 echo ""
 echo "=== Schritt 3: Repositories von Bookworm auf Trixie umstellen ==="
-sudo sed -i 's/bookworm/trixie/g' /etc/apt/sources.list
-
-# Prüfe ob raspi.list existiert (für Raspberry Pi)
-if [ -f /etc/apt/sources.list.d/raspi.list ]; then
-    echo "Raspberry Pi Repository gefunden, aktualisiere..."
-    sudo sed -i 's/bookworm/trixie/g' /etc/apt/sources.list.d/raspi.list
-fi
-
-# Prüfe andere .list Dateien in sources.list.d
-echo "Prüfe weitere Repository-Dateien..."
-for file in /etc/apt/sources.list.d/*.list; do
-    if [ -f "$file" ] && [ "$(basename "$file")" != "raspi.list" ]; then
-        if grep -q "bookworm" "$file"; then
-            echo "Aktualisiere $file..."
-            sudo sed -i 's/bookworm/trixie/g' "$file"
-        fi
+for file in "${source_files[@]}"; do
+    if grep -q "bookworm" "$file"; then
+        echo "Aktualisiere $file..."
+        sudo sed -i 's/bookworm/trixie/g' "$file"
+    else
+        echo "Keine bookworm-Einträge in $file gefunden, überspringe..."
     fi
 done
 
@@ -97,8 +115,9 @@ fi
 echo ""
 echo "=== Update abgeschlossen! ==="
 echo "Prüfe die neue Version mit: lsb_release -a"
-echo "Bei Problemen kannst du das Backup wiederherstellen:"
-echo "sudo cp /etc/apt/sources.list.backup.* /etc/apt/sources.list"
+echo "Backups wurden mit Endung .backup.${backup_ts} erstellt."
+echo "Beispiel für Restore:"
+echo "sudo cp /etc/apt/sources.list.d/debian.sources.backup.${backup_ts} /etc/apt/sources.list.d/debian.sources"
 
 # Aktuelle Debian-Version anzeigen
 echo ""
