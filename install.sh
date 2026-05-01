@@ -22,6 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
+BUILD_ID="85423e6"
 
 # ============================================================================
 # Argumente parsen
@@ -1182,7 +1183,7 @@ main() {
         echo -e "  ${BB}│${W}      ${DIM}Patches installieren / entfernen${W}                       ${BB}│${W}"
         echo -e "  ${BB}│${W}      ${DIM}(OpenWB muss bereits installiert sein)${W}                ${BB}│${W}"
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${DIM} [5]  Beenden${W}                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM} [5]  Beenden${W}                              ${DIM}build:${BUILD_ID}${W} ${BB}│${W}"
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
         echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
         echo ""
