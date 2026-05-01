@@ -315,8 +315,8 @@ run_openwb_core_installer_noninteractive() {
         "$packages_script"
 
     sed -i \
-        -e "s|curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s|bash \"$packages_script\"|g" \
-        -e 's|mkdir "$OPENWBBASEDIR"|mkdir -p "$OPENWBBASEDIR"|g' \
+        -e "s@curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s@bash \"$packages_script\"@g" \
+        -e 's@mkdir "$OPENWBBASEDIR"@mkdir -p "$OPENWBBASEDIR"@g' \
         "$install_script"
 
     sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
