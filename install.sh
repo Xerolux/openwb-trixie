@@ -182,11 +182,24 @@ run_as_openwb_user() {
         return 0
     fi
     log "Starte Installer als Benutzer '$OPENWB_USER'..."
-    if [ -f "$0" ] && [ -r "$0" ]; then
-        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$0" "$@"
-    fi
-    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" OPENWB_TRIXIE_URL="$OPENWB_TRIXIE_URL" \
-        bash -lc 'curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "${OPENWB_TRIXIE_URL}?_=$(date +%s)" | bash'
+
+    local tmp="/tmp/openwb-trixie-install-$$.sh"
+    case "$0" in
+        /dev/fd/*|/proc/*)
+            curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
+                "${OPENWB_TRIXIE_URL}?_=$(date +%s)" -o "$tmp"
+            ;;
+        *)
+            if [ -f "$0" ] && [ -r "$0" ]; then
+                cp "$0" "$tmp"
+            else
+                curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
+                    "${OPENWB_TRIXIE_URL}?_=$(date +%s)" -o "$tmp"
+            fi
+            ;;
+    esac
+    chmod a+r "$tmp"
+    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
 }
 
 recover_dpkg_if_needed() {
