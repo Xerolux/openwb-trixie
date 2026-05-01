@@ -245,6 +245,23 @@ is_trixie() {
     grep -q "trixie" /etc/debian_version 2>/dev/null
 }
 
+is_arm_arch() {
+    case "$(uname -m 2>/dev/null || true)" in
+        arm*|aarch64) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_raspberry_pi() {
+    local model=""
+    if [ -r /proc/device-tree/model ]; then
+        model=$(tr -d '\000' < /proc/device-tree/model)
+    elif [ -r /sys/firmware/devicetree/base/model ]; then
+        model=$(tr -d '\000' < /sys/firmware/devicetree/base/model)
+    fi
+    printf '%s\n' "$model" | grep -qi "raspberry pi"
+}
+
 echo "====================================================================="
 echo "   OpenWB Installation für Debian Trixie"
 echo "====================================================================="
@@ -307,20 +324,23 @@ sudo apt install -y \
     libgpiod-dev \
     libffi-dev
 
-# liblgpio-dev ist nicht auf allen Debian/Trixie-Systemen verfügbar
-if apt-cache show liblgpio-dev &>/dev/null; then
-    sudo apt install -y liblgpio-dev
-    log_success "liblgpio-dev installiert"
-else
-    log_warning "liblgpio-dev nicht verfügbar, überspringe"
-fi
+# Raspberry Pi-spezifische Pakete nur auf Raspberry Pi mit ARM/ARM64 installieren
+if is_arm_arch && is_raspberry_pi; then
+    if apt-cache show liblgpio-dev &>/dev/null; then
+        sudo apt install -y liblgpio-dev
+        log_success "liblgpio-dev installiert"
+    else
+        log_warning "liblgpio-dev nicht verfügbar, überspringe"
+    fi
 
-# python3-rpi-lgpio separat installieren (existiert nur auf Raspberry Pi)
-if apt-cache show python3-rpi-lgpio &>/dev/null; then
-    sudo apt install -y python3-rpi-lgpio
-    log_success "python3-rpi-lgpio installiert"
+    if apt-cache show python3-rpi-lgpio &>/dev/null; then
+        sudo apt install -y python3-rpi-lgpio
+        log_success "python3-rpi-lgpio installiert"
+    else
+        log_warning "python3-rpi-lgpio nicht verfügbar, überspringe"
+    fi
 else
-    log_warning "python3-rpi-lgpio nicht verfügbar (kein Raspberry Pi?)"
+    log "Kein Raspberry Pi mit ARM/ARM64 erkannt, überspringe liblgpio-dev und python3-rpi-lgpio"
 fi
 log_success "Build-Abhängigkeiten erfolgreich installiert"
 
