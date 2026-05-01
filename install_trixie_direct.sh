@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.16"
+INSTALLER_VERSION="2026-05-01.17"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -323,6 +323,22 @@ ensure_free_space_mb() {
     log "Freier Speicher auf /: ${avail_mb} MB"
 }
 
+prepare_openwb_requirements_for_py313() {
+    local req_file="/var/www/html/openWB/requirements.txt"
+    if [ -f "$req_file" ]; then
+        log "Passe OpenWB requirements für Python 3.13 an..."
+        sudo sed -E -i \
+            -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
+            -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
+            "$req_file"
+    fi
+
+    if [ -x /opt/openwb-venv/bin/pip3 ]; then
+        log "Aktualisiere pip/setuptools/wheel im venv..."
+        /opt/openwb-venv/bin/pip3 install -U pip setuptools wheel
+    fi
+}
+
 run_openwb_core_installer_noninteractive() {
     local tmp_dir install_script packages_script
     tmp_dir=$(mktemp -d)
@@ -555,6 +571,7 @@ else
     log "OpenWB wird installiert..."
     ensure_free_space_mb 2500
     ensure_openwb_webroot
+    prepare_openwb_requirements_for_py313
     run_openwb_core_installer_noninteractive
     log_success "OpenWB erfolgreich installiert"
 fi
