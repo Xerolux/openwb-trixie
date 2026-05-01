@@ -70,6 +70,9 @@ VENV_DIR="/opt/openwb-venv"
 SETUP_SCRIPT="/home/openwb/openwb-trixie/setup_venv.sh"
 REQUIREMENTS_FILE="/home/openwb/openwb-trixie/requirements.txt"
 OPENWB_DIR="/var/www/html/openWB"
+PATCH_DIR="/opt/openwb-patches"
+PATCH_CONF="$PATCH_DIR/enabled.conf"
+PATCHES_SRC_DIR="/home/openwb/openwb-trixie"
 
 reapply_openwb_patches() {
     local atreboot_file="$OPENWB_DIR/runs/atreboot.sh"
@@ -230,6 +233,39 @@ else
 fi
 
 reapply_openwb_patches
+
+# Feature-Patches erneut anwenden
+if [ -f "$PATCH_CONF" ] && [ -s "$PATCH_CONF" ]; then
+    log "Wende aktivierte Feature-Patches erneut an..."
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        pfile=""
+        for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+            [ -f "$f" ] || continue
+            if grep -qm1 "^# Id: *$pid$" "$f"; then
+                pfile="$f"
+                break
+            fi
+        done
+        if [ -z "$pfile" ]; then
+            log_warning "Patch '$pid' nicht in $PATCHES_SRC_DIR/patches/"
+            continue
+        fi
+        export OPENWB_DIR VENV_DIR
+        source "$pfile"
+        if patch_check; then
+            log "  $pid: bereits aktiv"
+        else
+            if patch_apply; then
+                log_success "  $pid: erneut angewendet"
+            else
+                log_error "  $pid: FEHLER beim Re-Patch"
+            fi
+        fi
+    done < "$PATCH_CONF"
+else
+    log "Keine Feature-Patches aktiviert"
+fi
 
 # Optional: Prüfe OpenWB-Services und starte neu
 if command -v systemctl &> /dev/null; then

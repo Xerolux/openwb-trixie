@@ -88,6 +88,8 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 OPENWB_USER="openwb"
 VENV_DIR="/opt/openwb-venv"
 OPENWB_DIR="/var/www/html/openWB"
+PATCH_DIR="/opt/openwb-patches"
+PATCH_CONF="$PATCH_DIR/enabled.conf"
 if _src_dir="$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" && _tgt="$(cd "$_src_dir" 2>/dev/null && pwd)"; then
     SCRIPT_DIR="$_tgt"
 else
@@ -860,6 +862,192 @@ do_post_update_hook() {
 }
 
 # ============================================================================
+# Feature-Patches (modular, update-sicher, einzeln an-/abwählbar)
+# ============================================================================
+PATCHES_SRC_DIR=""  # wird in main() auf das repo-Verzeichnis gesetzt
+
+patches_discover() {
+    local pdir="$1"
+    local patches=()
+    for f in "$pdir"/*.sh; do
+        [ -f "$f" ] || continue
+        local basename
+        basename=$(basename "$f")
+        patches+=("$basename")
+    done
+    printf '%s\n' "${patches[@]}" | sort
+}
+
+patch_get_field() {
+    local file="$1" field="$2"
+    grep -m1 "^# $field:" "$file" 2>/dev/null | sed "s/^# $field: *//"
+}
+
+patches_load_enabled() {
+    mkdir -p "$PATCH_DIR"
+    touch "$PATCH_CONF"
+}
+
+patch_is_enabled() {
+    local pid="$1"
+    grep -qx "$pid" "$PATCH_CONF" 2>/dev/null
+}
+
+patch_enable() {
+    local pid="$1"
+    patches_load_enabled
+    if ! patch_is_enabled "$pid"; then
+        echo "$pid" >> "$PATCH_CONF"
+    fi
+}
+
+patch_disable() {
+    local pid="$1"
+    [ -f "$PATCH_CONF" ] || return
+    sed -i "/^${pid}$/d" "$PATCH_CONF"
+}
+
+patches_apply_enabled() {
+    patches_load_enabled
+    [ -s "$PATCH_CONF" ] || return 0
+
+    log "Wende aktivierte Feature-Patches an..."
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        local pfile=""
+        for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+            [ -f "$f" ] || continue
+            if [ "$(patch_get_field "$f" "Id")" = "$pid" ]; then
+                pfile="$f"
+                break
+            fi
+        done
+        if [ -z "$pfile" ]; then
+            log_warning "Patch '$pid' nicht gefunden (überspringe)"
+            continue
+        fi
+        export OPENWB_DIR VENV_DIR
+        source "$pfile"
+        if patch_check; then
+            log "  $pid: bereits aktiv"
+        else
+            if patch_apply; then
+                log_success "  $pid: angewendet"
+            else
+                log_error "  $pid: FEHLER"
+            fi
+        fi
+    done < "$PATCH_CONF"
+}
+
+patches_menu() {
+    if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
+        return 0
+    fi
+
+    local available
+    available=$(patches_discover "$PATCHES_SRC_DIR/patches")
+    [ -n "$available" ] || return 0
+
+    patches_load_enabled
+
+    local BOLD='\033[1m' DIM='\033[2m' W='\033[0m'
+    local GR='\033[0;32m' BG='\033[1;32m' BB='\033[1;34m'
+    local BY='\033[1;33m' RED='\033[0;31m' CY='\033[0;36m'
+
+    while true; do
+        local count=0
+        local patch_ids=()
+
+        echo ""
+        echo -e "  ${BB}┌──────────────────────────────────────────────────────────┐${W}"
+        echo -e "  ${BB}│${W}          ${BOLD}Feature-Patches (update-sicher)${W}                        ${BB}│${W}"
+        echo -e "  ${BB}├──────────────────────────────────────────────────────────┤${W}"
+
+        while IFS= read -r pfile; do
+            [ -z "$pfile" ] && continue
+            local full="$PATCHES_SRC_DIR/patches/$pfile"
+            local pid name desc
+            pid=$(patch_get_field "$full" "Id")
+            name=$(patch_get_field "$full" "Name")
+            desc=$(patch_get_field "$full" "Desc")
+            [ -z "$pid" ] && continue
+
+            count=$((count + 1))
+            patch_ids+=("$pid")
+
+            if patch_is_enabled "$pid"; then
+                echo -e "  ${BB}│${W}  ${GR}[${count}] INSTALLED${W}  ${BOLD}${name}${W}"
+            else
+                echo -e "  ${BB}│${W}  ${BY}[${count}] verfügbar${W}   ${name}${W}"
+            fi
+            echo -e "  ${BB}│${W}       ${DIM}${desc}${W}"
+        done <<< "$available"
+
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM}[0] Weiter / Fertig${W}                                  ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM}[r] Patch entfernen${W}                                   ${BB}│${W}"
+        echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
+        echo ""
+
+        echo -ne "  ${BOLD}Wahl${W} [0-${count}/r]: "
+        read -n 1 -r < /dev/tty
+        echo
+
+        case "$REPLY" in
+            0|"") break ;;
+            r|R)
+                echo -ne "  Patch-Nummer zum ${RED}Entfernen${W}: "
+                read -r num < /dev/tty
+                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "$count" ]; then
+                    local pid="${patch_ids[$((num-1))]}"
+                    local full="$PATCHES_SRC_DIR/patches/$(ls "$PATCHES_SRC_DIR/patches/" | sed -n "${num}p")"
+                    export OPENWB_DIR VENV_DIR
+                    source "$full"
+                    if patch_revert; then
+                        patch_disable "$pid"
+                        log_success "Patch '$pid' entfernt und deaktiviert"
+                    else
+                        log_error "Patch '$pid' konnte nicht entfernt werden"
+                    fi
+                else
+                    echo -e "  ${RED}Ungültige Nummer${W}"
+                fi
+                continue
+                ;;
+        esac
+
+        if [[ "$REPLY" =~ ^[0-9]+$ ]] && [ "$REPLY" -ge 1 ] && [ "$REPLY" -le "$count" ]; then
+            local pid="${patch_ids[$((REPLY-1))]}"
+            local full="$PATCHES_SRC_DIR/patches/$(ls "$PATCHES_SRC_DIR/patches/" | sed -n "${REPLY}p")"
+            export OPENWB_DIR VENV_DIR
+            source "$full"
+
+            if patch_is_enabled "$pid"; then
+                echo -e "  ${GR}Patch '$pid' ist bereits installiert.${W}"
+                echo -ne "  Entfernen? (j/N): "
+                read -n 1 -r yn < /dev/tty
+                echo
+                if [[ "$yn" =~ ^[JjYy]$ ]]; then
+                    if patch_revert; then
+                        patch_disable "$pid"
+                        log_success "Patch '$pid' entfernt und deaktiviert"
+                    fi
+                fi
+            else
+                echo -e "  Installiere '${BOLD}$(patch_get_field "$full" "Name")${W}'..."
+                if patch_apply; then
+                    patch_enable "$pid"
+                    log_success "Patch '$pid' installiert und aktiviert"
+                else
+                    log_error "Patch '$pid' konnte nicht installiert werden"
+                fi
+            fi
+        fi
+    done
+}
+
+# ============================================================================
 # Finale Überprüfung
 # ============================================================================
 do_final_check() {
@@ -905,6 +1093,15 @@ do_final_check() {
 
     echo -e "  ${BB}├─────────────────────────────────────────────────────────┤${W}"
     echo -e "  ${BB}│${W}  ${BOLD}Web-Interface:${W}  ${CY}http://$(hostname -I 2>/dev/null | awk '{print $1}')${W}"
+
+    if [ -f "$PATCH_CONF" ] && [ -s "$PATCH_CONF" ]; then
+        echo -e "  ${BB}│${W}  ${BOLD}Feature-Patches:${W}"
+        while IFS= read -r pid; do
+            [ -z "$pid" ] && continue
+            echo -e "  ${BB}│${W}    ${GR}aktiv${W}  $pid"
+        done < "$PATCH_CONF"
+    fi
+
     echo -e "  ${BB}│${W}"
     if is_arm_arch && is_raspberry_pi; then
         echo -e "  ${BB}│${W}  ${BY}WICHTIG: Bitte zuerst rebooten fuer GPIO-Konfiguration!${W}"
@@ -1050,6 +1247,8 @@ main() {
         SCRIPT_DIR="$(pwd)"
     fi
 
+    PATCHES_SRC_DIR="$SCRIPT_DIR"
+
     # ── Schritt 5: GPIO ──
     log_step "Schritt 5/8: GPIO-Konfiguration"
     configure_gpio
@@ -1079,6 +1278,12 @@ main() {
     do_openwb_install
     do_runtime_patches
     do_post_update_hook
+
+    # Feature-Patches (interaktiv auswählen)
+    if [ "$NONINTERACTIVE" -ne 1 ]; then
+        patches_menu
+    fi
+    patches_apply_enabled
 
     # Services starten
     log "Starte Services..."
