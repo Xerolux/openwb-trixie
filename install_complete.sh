@@ -257,7 +257,7 @@ main() {
     echo ""
     
     if [ -z "$continue_step" ]; then
-        read -p "Möchtest du fortfahren? (j/N): " -n 1 -r
+        read -p "Möchtest du fortfahren? (j/N): " -n 1 -r < /dev/tty
         echo
         if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
             echo "Installation abgebrochen."

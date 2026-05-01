@@ -106,7 +106,7 @@ create_venv() {
             update_venv
             return 0
         else
-            read -p "Möchtest du es neu erstellen? (j/N): " -n 1 -r
+            read -p "Möchtest du es neu erstellen? (j/N): " -n 1 -r < /dev/tty
             echo
             if [[ "$REPLY" =~ ^[Jj]$ ]]; then
                 log_warning "Lösche existierendes venv..."

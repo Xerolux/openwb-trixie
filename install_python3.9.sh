@@ -170,7 +170,7 @@ else
     echo "⚠ Dauert 30-60 Minuten!"
     echo ""
     if [[ "${OPENWB_VENV_NONINTERACTIVE:-0}" != "1" ]]; then
-        read -p "Möchtest du stattdessen --with-venv nutzen? (empfohlen) (j/N): " -n 1 -r
+        read -p "Möchtest du stattdessen --with-venv nutzen? (empfohlen) (j/N): " -n 1 -r < /dev/tty
         echo
         if [[ "$REPLY" =~ ^[Jj]$ ]]; then
             echo "Starte mit --with-venv..."

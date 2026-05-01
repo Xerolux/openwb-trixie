@@ -215,7 +215,7 @@ fi
 
 log_success "Debian Trixie erkannt"
 
-read -p "Möchtest du fortfahren? (j/N): " -n 1 -r
+read -p "Möchtest du fortfahren? (j/N): " -n 1 -r < /dev/tty
 echo
 if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
     echo "Installation abgebrochen."
@@ -441,7 +441,7 @@ echo "====================================================================="
 show_service_status
 
 log_warning "Ein Neustart wird empfohlen für GPIO-Konfiguration!"
-read -p "Jetzt neustarten? (j/N): " -n 1 -r
+read -p "Jetzt neustarten? (j/N): " -n 1 -r < /dev/tty
 echo
 if [[ "$REPLY" =~ ^[Jj]$ ]]; then
     sudo reboot

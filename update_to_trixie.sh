@@ -42,7 +42,7 @@ echo "=== Debian Bookworm zu Trixie Update ==="
 echo "WARNUNG: Dieses Script führt ein Major-Version-Update durch!"
 echo "Stelle sicher, dass du ein vollständiges System-Backup hast."
 echo ""
-read -p "Möchtest du fortfahren? (j/N): " -n 1 -r
+read -p "Möchtest du fortfahren? (j/N): " -n 1 -r < /dev/tty
 echo
 if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
     echo "Update abgebrochen."
