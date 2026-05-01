@@ -262,6 +262,34 @@ is_raspberry_pi() {
     printf '%s\n' "$model" | grep -qi "raspberry pi"
 }
 
+configure_german_defaults() {
+    log "Setze Zeitzone auf Europe/Berlin..."
+    sudo timedatectl set-timezone Europe/Berlin 2>/dev/null || sudo ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+    sudo sh -c 'echo "Europe/Berlin" > /etc/timezone'
+
+    log "Installiere/aktualisiere Locale- und Keyboard-Pakete..."
+    sudo apt install -y locales keyboard-configuration console-setup tzdata
+
+    log "Setze Locale auf de_DE.UTF-8..."
+    if ! grep -q '^de_DE.UTF-8 UTF-8$' /etc/locale.gen; then
+        echo 'de_DE.UTF-8 UTF-8' | sudo tee -a /etc/locale.gen > /dev/null
+    fi
+    sudo locale-gen de_DE.UTF-8
+    sudo update-locale LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8
+
+    log "Setze Tastatur-Layout auf Deutsch..."
+    {
+        echo 'keyboard-configuration keyboard-configuration/layoutcode select de'
+        echo 'keyboard-configuration keyboard-configuration/modelcode select pc105'
+        echo 'keyboard-configuration keyboard-configuration/variantcode select'
+        echo 'keyboard-configuration keyboard-configuration/optionscode string'
+    } | sudo debconf-set-selections
+    sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure keyboard-configuration
+    sudo setupcon -k || true
+
+    log_success "Zeitzone/Locale/Tastatur auf deutsche Standards gesetzt"
+}
+
 echo "====================================================================="
 echo "   OpenWB Installation für Debian Trixie"
 echo "====================================================================="
@@ -305,6 +333,10 @@ if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
     echo "Installation abgebrochen."
     exit 1
 fi
+
+# Schritt 0: Deutsche Standards setzen
+log "=== Schritt 0: Deutsche Standards setzen (Zeitzone/Keyboard/UTF-8) ==="
+configure_german_defaults
 
 # Schritt 1: System aktualisieren
 log "=== Schritt 1: System aktualisieren ==="
