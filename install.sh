@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="85423e6"
+BUILD_ID="e74375a"
 
 # ============================================================================
 # Argumente parsen
