@@ -1179,6 +1179,8 @@ main() {
         echo -e "  ${BB}│${W}      ${DIM}Patches installieren / entfernen${W}                       ${BB}│${W}"
         echo -e "  ${BB}│${W}      ${DIM}(OpenWB muss bereits installiert sein)${W}                ${BB}│${W}"
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM} [5]  Beenden${W}                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
         echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
         echo ""
         if [ "$NONINTERACTIVE" -eq 1 ]; then
@@ -1186,7 +1188,7 @@ main() {
             MODE="venv"
         else
             while true; do
-                echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}/${BY}4${W}]: "
+                echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}/${BY}4${W}/${DIM}5${W}]: "
                 read -n 1 -r < /dev/tty
                 echo
                 case "$REPLY" in
@@ -1194,7 +1196,8 @@ main() {
                     2)    MODE="python39";   break ;;
                     3)    MODE="python314";  break ;;
                     4)    MODE="patches";    break ;;
-                    *)    echo -e "  ${RED}Bitte 1, 2, 3 oder 4 eingeben${W}" ;;
+                    5|q|Q) echo -e "  ${DIM}Tschüss!${W}"; exit 0 ;;
+                    *)    echo -e "  ${RED}Bitte 1-5 eingeben${W}" ;;
                 esac
             done
         fi
