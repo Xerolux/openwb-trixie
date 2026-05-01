@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.11"
+INSTALLER_VERSION="2026-05-01.12"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -428,7 +428,10 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
     python3-venv \
     pkg-config \
     libgpiod-dev \
-    libffi-dev
+    libffi-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    zlib1g-dev
 
 # Raspberry Pi-spezifische Pakete nur auf Raspberry Pi mit ARM/ARM64 installieren
 if is_arm_arch && is_raspberry_pi; then
