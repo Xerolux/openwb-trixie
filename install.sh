@@ -8,7 +8,7 @@
 # Verwendung:
 #   ./install.sh                  Interaktive Modus-Auswahl
 #   ./install.sh --venv           System-Python + venv (empfohlen, schnell)
-#   ./install.sh --python39       Python 3.9.23 kompilieren (Legacy, Original)
+#   ./install.sh --python39       Python 3.9.25 kompilieren (Legacy, Original)
 #   ./install.sh --help           Hilfe anzeigen
 #
 # Getestet auf: x86_64, ARM64, ARM32, Proxmox, Raspberry Pi
@@ -390,12 +390,12 @@ EOF
 }
 
 # ============================================================================
-# Python-Modus: Python 3.9.23 kompilieren (Legacy, Original-System)
+# Python-Modus: Python 3.9.25 kompilieren (Legacy, Original-System)
 # ============================================================================
 do_python_39() {
-    log_step "Python 3.9.23 Kompilierung (Legacy-Modus, 30-60 Min)"
+    log_step "Python 3.9.25 Kompilierung (Legacy-Modus, 30-60 Min)"
 
-    log_warning "Dies überschreibt das System-Python mit Python 3.9.23!"
+    log_warning "Dies überschreibt das System-Python mit Python 3.9.25!"
     log_warning "Dauer: 30-60 Minuten je nach Hardware"
     echo ""
 
@@ -425,13 +425,13 @@ do_python_39() {
         fi
     fi
 
-    log "Lade Python 3.9.23 Quellcode..."
+    log "Lade Python 3.9.25 Quellcode..."
     cd /tmp
-    wget -q https://www.python.org/ftp/python/3.9.23/Python-3.9.23.tgz
-    tar -xzf Python-3.9.23.tgz
-    cd Python-3.9.23
+    wget -q https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tgz
+    tar -xzf Python-3.9.25.tgz
+    cd Python-3.9.25
 
-    log "Konfiguriere Python 3.9.23..."
+    log "Konfiguriere Python 3.9.25..."
     ./configure \
         --enable-optimizations \
         --with-ensurepip=install \
@@ -440,7 +440,7 @@ do_python_39() {
         --with-system-expat \
         --with-system-ffi
 
-    log "Kompiliere Python 3.9.23..."
+    log "Kompiliere Python 3.9.25..."
     local available_ram cpu_cores jobs
     available_ram=$(free -g | awk 'NR==2{print $7}')
     cpu_cores=$(nproc)
@@ -456,7 +456,7 @@ do_python_39() {
 
     make test || log_warning "Einige Tests fehlgeschlagen (kann ignoriert werden)"
 
-    log "Installiere Python 3.9.23..."
+    log "Installiere Python 3.9.25..."
     sudo make install
     sudo ldconfig
     sudo ln -sf /usr/local/bin/python3 /usr/local/bin/python
@@ -465,9 +465,9 @@ do_python_39() {
     /usr/local/bin/pip3 install rpi-lgpio 2>/dev/null || true
 
     cd /
-    rm -rf /tmp/Python-3.9.23*
+    rm -rf /tmp/Python-3.9.25*
 
-    log_success "Python 3.9.23 installiert: $(python3 --version 2>&1)"
+    log_success "Python 3.9.25 installiert: $(python3 --version 2>&1)"
 }
 
 # ============================================================================
@@ -712,8 +712,8 @@ main() {
         echo "      - Schnell: ~10-15 Minuten"
         echo "      - Update-resistent (automatischer Post-Update Hook)"
         echo ""
-        echo "  [2] Python 3.9.23 kompilieren (ORIGINAL-GETREU)"
-        echo "      - Kompiliert Python 3.9.23 aus Quellcode"
+        echo "  [2] Python 3.9.25 kompilieren (ORIGINAL-GETREU)"
+        echo "      - Kompiliert Python 3.9.25 aus Quellcode"
         echo "      - Keine Anpassungen am OpenWB-Code nötig"
         echo "      - Überschreibt das System-Python"
         echo "      - Langsam: ~30-60 Minuten"
@@ -738,7 +738,7 @@ main() {
     if [ "$MODE" = "venv" ]; then
         log_success "Modus: System-Python + venv (schnell, modern)"
     else
-        log_success "Modus: Python 3.9.23 kompilieren (original-getreu)"
+        log_success "Modus: Python 3.9.25 kompilieren (original-getreu)"
     fi
     echo ""
 
@@ -804,7 +804,7 @@ main() {
         log_step "Schritt 7/8: Python venv erstellen"
         do_python_venv
     else
-        log_step "Schritt 7/8: Python 3.9.23 kompilieren"
+        log_step "Schritt 7/8: Python 3.9.25 kompilieren"
         do_python_39
     fi
 

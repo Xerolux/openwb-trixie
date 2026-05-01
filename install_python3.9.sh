@@ -3,7 +3,7 @@
 # Python Installation und Virtual Environment Setup für OpenWB
 #
 # NEUE LOGIK (optimiert für Trixie):
-# - Ohne Flags: Kompiliert Python 3.9.23 (Legacy-Kompatibilität, langsam!)
+# - Ohne Flags: Kompiliert Python 3.9.25 (Legacy-Kompatibilität, langsam!)
 # - Mit --with-venv oder --venv-only: Nutzt System-Python (schnell!)
 #
 # Optionen:
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
             echo "Verwendung: $0 [OPTIONEN]"
             echo ""
             echo "Optionen:"
-            echo "  (keine)         Legacy-Modus: Kompiliert Python 3.9.23 (langsam!)"
+            echo "  (keine)         Legacy-Modus: Kompiliert Python 3.9.25 (langsam!)"
             echo "                  Überschreibt System-Python"
             echo ""
             echo "  --with-venv     Modern: Nutzt System-Python + venv (EMPFOHLEN!)"
@@ -167,7 +167,7 @@ elif [ "$INSTALL_VENV" = true ]; then
     echo "✓ Nutzt Debian Trixie System-Python"
     echo "✓ Isolierte Paket-Installation"
 else
-    echo "Modus: Legacy - Python 3.9.23 Kompilierung"
+    echo "Modus: Legacy - Python 3.9.25 Kompilierung"
     echo "⚠ WARNUNG: Überschreibt System-Python!"
     echo "⚠ Dauert 30-60 Minuten!"
     echo ""
@@ -278,15 +278,15 @@ sudo apt-get -q -y install \
     g++ \
     pkg-config
 
-# 3. Python 3.9.23 Quellcode herunterladen
-echo "3. Python 3.9.23 Quellcode wird heruntergeladen..."
+# 3. Python 3.9.25 Quellcode herunterladen
+echo "3. Python 3.9.25 Quellcode wird heruntergeladen..."
 cd /tmp
-wget https://www.python.org/ftp/python/3.9.23/Python-3.9.23.tgz
+wget https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tgz
 
 # 4. Archiv extrahieren
 echo "4. Archiv wird extrahiert..."
-tar -xzf Python-3.9.23.tgz
-cd Python-3.9.23
+tar -xzf Python-3.9.25.tgz
+cd Python-3.9.25
 
 # 5. Konfiguration (ohne LTO für weniger RAM-Verbrauch)
 echo "5. Python wird konfiguriert..."
@@ -359,7 +359,7 @@ if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
     /usr/local/bin/pip3 install rpi-lgpio
 
     echo "=== Installation abgeschlossen ==="
-    echo "Python 3.9.23 ist jetzt als Standard-Python installiert"
+    echo "Python 3.9.25 ist jetzt als Standard-Python installiert"
     echo "Verfügbare Befehle: python, python3, pip, pip3"
     echo "rpi-lgpio wurde installiert"
 
@@ -388,7 +388,7 @@ fi
 # Aufräumen
 echo "Temporäre Dateien werden bereinigt..."
 cd /
-rm -rf /tmp/Python-3.9.23*
+rm -rf /tmp/Python-3.9.25*
 
 fi  # Ende von if [ "$INSTALL_VENV" = false ]
 

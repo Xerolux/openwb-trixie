@@ -4,7 +4,7 @@
 # Dieses Script führt alle notwendigen Schritte automatisch durch:
 # 1. Repository klonen
 # 2. Update auf Debian Trixie
-# 3. Python 3.9.23 Installation
+# 3. Python 3.9.25 Installation
 # 4. OpenWB Installation
 # 5. Automatische Neustarts
 #
@@ -250,7 +250,7 @@ main() {
     echo "Dieses Script führt folgende Schritte automatisch durch:"
     echo "1. Repository klonen"
     echo "2. Update auf Debian Trixie"
-    echo "3. Python 3.9.23 Installation"
+    echo "3. Python 3.9.25 Installation"
     echo "4. OpenWB Installation"
     echo "5. Automatische Neustarts"
     echo ""
@@ -331,14 +331,14 @@ main() {
             # Kein Neustart nötig bei venv-only Installation
             log_success "Python-Setup abgeschlossen (kein Neustart nötig)"
         else
-            log "=== Schritt 3: Python 3.9.23 Kompilierung ==="
+            log "=== Schritt 3: Python 3.9.25 Kompilierung ==="
             log_warning "Dies dauert 30-60 Minuten!"
 
-            # Prüfe ob Python 3.9.23 bereits installiert ist
-            if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
-                log "Python 3.9.23 bereits installiert, überspringe..."
+            # Prüfe ob Python 3.9.25 bereits installiert ist
+            if python3 --version 2>/dev/null | grep -q "Python 3.9.25"; then
+                log "Python 3.9.25 bereits installiert, überspringe..."
             else
-                log "Python 3.9.23 wird kompiliert und installiert..."
+                log "Python 3.9.25 wird kompiliert und installiert..."
                 chmod +x install_python3.9.sh
 
                 # OPENWB_VENV_NONINTERACTIVE=1 überspringt alle read-Prompts im Script
@@ -422,10 +422,10 @@ PYEOF
                 log_error "Python nicht gefunden"
             fi
         else
-            if python3 --version 2>/dev/null | grep -q "Python 3.9.23"; then
-                log_success "Python 3.9.23 erfolgreich installiert"
+            if python3 --version 2>/dev/null | grep -q "Python 3.9.25"; then
+                log_success "Python 3.9.25 erfolgreich installiert"
             else
-                log_error "Python 3.9.23 nicht korrekt installiert"
+                log_error "Python 3.9.25 nicht korrekt installiert"
             fi
         fi
         
