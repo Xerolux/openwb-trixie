@@ -88,7 +88,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 OPENWB_USER="openwb"
 VENV_DIR="/opt/openwb-venv"
 OPENWB_DIR="/var/www/html/openWB"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR="$HOME"
 OPENWB_TRIXIE_URL="${OPENWB_TRIXIE_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh}"
 
 # ============================================================================
