@@ -1,0 +1,833 @@
+#!/bin/bash
+
+# ============================================================================
+# OpenWB Trixie Installer - Ein Script für alles
+# ============================================================================
+# Für FRISCHE Debian Trixie Installationen (kein Bookworm-Upgrade!)
+#
+# Verwendung:
+#   ./install.sh                  Interaktive Modus-Auswahl
+#   ./install.sh --venv           System-Python + venv (empfohlen, schnell)
+#   ./install.sh --python39       Python 3.9.23 kompilieren (Legacy, Original)
+#   ./install.sh --help           Hilfe anzeigen
+#
+# Getestet auf: x86_64, ARM64, ARM32, Proxmox, Raspberry Pi
+# ============================================================================
+
+set -Ee -o pipefail
+
+INSTALLER_VERSION="2026-05-01"
+
+# ============================================================================
+# Argumente parsen
+# ============================================================================
+MODE=""
+NONINTERACTIVE=0
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --venv|-v)
+            MODE="venv"
+            shift
+            ;;
+        --python39|--legacy|-l)
+            MODE="python39"
+            shift
+            ;;
+        --non-interactive|-n)
+            NONINTERACTIVE=1
+            shift
+            ;;
+        --help|-h)
+            head -20 "$0" | grep -v '^#!/' | sed 's/^# //; s/^#//'
+            exit 0
+            ;;
+        *)
+            echo "Unbekannte Option: $1"
+            echo "Nutze --help für Hilfe"
+            exit 1
+            ;;
+    esac
+done
+
+# ============================================================================
+# Farben und Logging
+# ============================================================================
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log()       { echo -e "${BLUE}[$(date +'%H:%M:%S')]${NC} $1"; }
+log_success() { echo -e "${GREEN}[$(date +'%H:%M:%S')] OK${NC} $1"; }
+log_warning() { echo -e "${YELLOW}[$(date +'%H:%M:%S')] WARN${NC} $1"; }
+log_error()   { echo -e "${RED}[$(date +'%H:%M:%S')] FEHLER${NC} $1"; }
+log_step()    { echo -e "\n${CYAN}━━━ $1 ━━━${NC}\n"; }
+
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    log_error "Zeile $line_no: $cmd (Exit: $exit_code)"
+}
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
+# ============================================================================
+# Konfiguration
+# ============================================================================
+OPENWB_USER="openwb"
+VENV_DIR="/opt/openwb-venv"
+OPENWB_DIR="/var/www/html/openWB"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPENWB_TRIXIE_URL="${OPENWB_TRIXIE_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh}"
+
+# ============================================================================
+# Hilfsfunktionen: Plattform-Erkennung
+# ============================================================================
+is_arm_arch() {
+    case "$(uname -m 2>/dev/null || true)" in
+        arm*|aarch64) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_raspberry_pi() {
+    local model=""
+    if [ -r /proc/device-tree/model ]; then
+        model=$(tr -d '\000' < /proc/device-tree/model)
+    elif [ -r /sys/firmware/devicetree/base/model ]; then
+        model=$(tr -d '\000' < /sys/firmware/devicetree/base/model)
+    fi
+    printf '%s\n' "$model" | grep -qi "raspberry pi"
+}
+
+is_trixie() {
+    if [ -r /etc/os-release ]; then
+        . /etc/os-release
+        if [ "${VERSION_CODENAME:-}" = "trixie" ] || printf '%s\n' "${VERSION:-}" | grep -qi 'trixie'; then
+            return 0
+        fi
+    fi
+    command -v lsb_release >/dev/null 2>&1 && lsb_release -c 2>/dev/null | grep -q "trixie"
+}
+
+detect_php_version() {
+    local v
+    if command -v php >/dev/null 2>&1; then
+        v=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;' 2>/dev/null)
+        [ -n "$v" ] && echo "$v" && return
+    fi
+    for v in 8.4 8.3 8.2; do
+        [ -d "/etc/php/$v" ] && echo "$v" && return
+    done
+    echo "8.4"
+}
+
+get_venv_python_version() {
+    if [ -x "$VENV_DIR/bin/python3" ]; then
+        "$VENV_DIR/bin/python3" -c 'import sys; v=sys.version_info; print(f"{v.major}.{v_minor}")' 2>/dev/null
+    fi
+}
+
+ensure_free_space_mb() {
+    local min_mb="$1"
+    local avail_mb
+    avail_mb=$(df -Pm / | awk 'NR==2 {print $4}')
+    if [ -n "$avail_mb" ] && [ "$avail_mb" -lt "$min_mb" ]; then
+        log_error "Nur ${avail_mb} MB frei auf / (mindestens ${min_mb} MB benötigt)"
+        exit 1
+    fi
+}
+
+# ============================================================================
+# Hilfsfunktionen: System-Konfiguration
+# ============================================================================
+ensure_openwb_user() {
+    if id "$OPENWB_USER" >/dev/null 2>&1; then
+        log "Benutzer '$OPENWB_USER' existiert"
+    else
+        log "Erstelle Benutzer '$OPENWB_USER'..."
+        sudo useradd -m -s /bin/bash "$OPENWB_USER"
+    fi
+    if ! id -nG "$OPENWB_USER" | grep -qw sudo; then
+        sudo usermod -aG sudo "$OPENWB_USER"
+    fi
+    if ! id -nG "$OPENWB_USER" | grep -qw gpio 2>/dev/null; then
+        sudo groupadd gpio 2>/dev/null || true
+        sudo usermod -aG gpio "$OPENWB_USER" 2>/dev/null || true
+    fi
+}
+
+run_as_openwb_user() {
+    if [ "${OPENWB_RUN_AS_USER:-0}" = "1" ]; then
+        return 0
+    fi
+    ensure_openwb_user
+    if [ "$(id -un)" = "$OPENWB_USER" ]; then
+        export OPENWB_RUN_AS_USER=1
+        return 0
+    fi
+    log "Starte Installer als Benutzer '$OPENWB_USER'..."
+    if [ -f "$0" ] && [ -r "$0" ]; then
+        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$0" "$@"
+    fi
+    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" OPENWB_TRIXIE_SCRIPT_URL="$OPENWB_TRIXIE_SCRIPT_URL" \
+        bash -lc 'curl -fsSL "${OPENWB_TRIXIE_SCRIPT_URL}?ts=$(date +%s)" | bash'
+}
+
+recover_dpkg_if_needed() {
+    if sudo test -n "$(sudo find /var/lib/dpkg/updates -maxdepth 1 -type f 2>/dev/null)"; then
+        log_warning "Unvollständiger dpkg-Status, repariere..."
+        sudo DEBIAN_FRONTEND=noninteractive dpkg --configure -a
+    fi
+}
+
+configure_german_defaults() {
+    log "Setze deutsche Standards (Zeitzone/Locale/Tastatur)..."
+    sudo timedatectl set-timezone Europe/Berlin 2>/dev/null || sudo ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+    sudo sh -c 'echo "Europe/Berlin" > /etc/timezone'
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y locales keyboard-configuration console-setup tzdata
+    if ! grep -q '^de_DE.UTF-8 UTF-8$' /etc/locale.gen; then
+        echo 'de_DE.UTF-8 UTF-8' | sudo tee -a /etc/locale.gen > /dev/null
+    fi
+    sudo locale-gen de_DE.UTF-8
+    sudo update-locale LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8
+    {
+        echo 'keyboard-configuration keyboard-configuration/layoutcode select de'
+        echo 'keyboard-configuration keyboard-configuration/modelcode select pc105'
+    } | sudo debconf-set-selections
+    sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure keyboard-configuration 2>/dev/null || true
+    sudo setupcon -k 2>/dev/null || true
+}
+
+configure_gpio() {
+    if ! is_arm_arch || ! is_raspberry_pi; then
+        log "Kein Raspberry Pi - GPIO-Konfiguration übersprungen"
+        return 0
+    fi
+
+    local config_txt=""
+    if [ -f "/boot/firmware/config.txt" ]; then
+        config_txt="/boot/firmware/config.txt"
+    elif [ -f "/boot/config.txt" ]; then
+        config_txt="/boot/config.txt"
+    fi
+
+    if [ -z "$config_txt" ]; then
+        log_warning "config.txt nicht gefunden"
+        return 0
+    fi
+
+    log "Konfiguriere GPIO ($config_txt)..."
+    sudo cp "$config_txt" "${config_txt}.backup.$(date +%Y%m%d_%H%M%S)"
+    sudo sed -i 's/dtparam=audio=on/dtparam=audio=off/g' "$config_txt"
+    sudo sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/g' "$config_txt"
+
+    if ! grep -q "# openwb - begin" "$config_txt"; then
+        sudo tee -a "$config_txt" > /dev/null << 'EOF'
+# openwb - begin
+# openwb-version:4
+# Do not edit this section! We need begin/end and version for proper updates!
+[all]
+gpio=4,5,7,11,17,22,23,24,25,26,27=op,dl
+gpio=6,8,9,10,12,13,16,21=ip,pu
+[cm4]
+gpio=22=op,dh
+[all]
+dtoverlay=disable-bt
+enable_uart=1
+avoid_warnings=1
+# openwb - end
+EOF
+        log_success "GPIO-Konfiguration hinzugefügt"
+    else
+        log "GPIO-Konfiguration bereits vorhanden"
+    fi
+}
+
+configure_php() {
+    local php_ver
+    php_ver=$(detect_php_version)
+    log "Konfiguriere PHP $php_ver (Upload-Limits 300M)..."
+    sudo mkdir -p "/etc/php/$php_ver/apache2/conf.d/" 2>/dev/null || true
+    printf 'upload_max_filesize = 300M\npost_max_size = 300M\n' | sudo tee "/etc/php/$php_ver/apache2/conf.d/20-uploadlimit.ini" > /dev/null
+}
+
+ensure_mosquitto_local_unit() {
+    if [ ! -f "/etc/init.d/mosquitto_local" ] || [ -f "/etc/systemd/system/mosquitto_local.service" ]; then
+        return 0
+    fi
+    log "Erstelle mosquitto_local systemd Unit..."
+    sudo tee /etc/systemd/system/mosquitto_local.service > /dev/null <<'EOF'
+[Unit]
+Description=Mosquitto Local Instance (openWB)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+ExecStart=/etc/init.d/mosquitto_local start
+ExecStop=/etc/init.d/mosquitto_local stop
+ExecReload=/etc/init.d/mosquitto_local restart
+PIDFile=/run/mosquitto_local.pid
+TimeoutSec=60
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable mosquitto_local >/dev/null 2>&1 || true
+}
+
+# ============================================================================
+# Python-Modus: venv (System-Python + Virtual Environment)
+# ============================================================================
+do_python_venv() {
+    log_step "Python venv Setup (System-Python, keine Kompilierung)"
+
+    sudo apt-get install -y python3 python3-venv python3-pip
+
+    local requirements="$SCRIPT_DIR/requirements.txt"
+    if [ ! -f "$requirements" ]; then
+        log_error "requirements.txt nicht gefunden: $requirements"
+        exit 1
+    fi
+
+    # venv erstellen oder aktualisieren
+    if [ -d "$VENV_DIR" ]; then
+        log "venv existiert bereits, aktualisiere..."
+    else
+        log "Erstelle venv in $VENV_DIR..."
+        sudo mkdir -p "$VENV_DIR"
+        if id "$OPENWB_USER" &>/dev/null; then
+            sudo chown -R "$OPENWB_USER:$OPENWB_USER" "$VENV_DIR"
+        fi
+        python3 -m venv --system-site-packages "$VENV_DIR"
+    fi
+
+    # Systempaket python3-rpi-lgpio (nur Raspberry Pi)
+    if is_arm_arch && is_raspberry_pi; then
+        if apt-cache show python3-rpi-lgpio >/dev/null 2>&1; then
+            sudo apt-get install -y python3-rpi-lgpio
+        fi
+    fi
+
+    # Pakete installieren
+    source "$VENV_DIR/bin/activate"
+    pip install --upgrade pip setuptools wheel
+
+    local filtered_req
+    filtered_req=$(mktemp)
+    grep -v '^rpi-lgpio' "$requirements" > "$filtered_req"
+    pip install -r "$filtered_req"
+    rm -f "$filtered_req"
+
+    pip freeze > "$VENV_DIR/installed_requirements.txt"
+    cp "$requirements" "$VENV_DIR/requirements.txt"
+    deactivate
+
+    # Wrapper
+    sudo tee /usr/local/bin/openwb-activate > /dev/null << 'WRAPPER'
+#!/bin/bash
+VENV_DIR="/opt/openwb-venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "venv nicht gefunden: $VENV_DIR"
+    exit 1
+fi
+source "$VENV_DIR/bin/activate"
+if [ $# -gt 0 ]; then
+    "$@"
+    exit $?
+else
+    echo "OpenWB venv aktiviert. Zum Deaktivieren: deactivate"
+    exec $SHELL
+fi
+WRAPPER
+    sudo chmod +x /usr/local/bin/openwb-activate
+
+    # asyncio.coroutine Kompatibilitäts-Shim (Python 3.11+)
+    local py_ver
+    py_ver=$("$VENV_DIR/bin/python3" -c 'import sys; v=sys.version_info; print(f"{v.major}.{v.minor}")' 2>/dev/null || echo "0.0")
+    local py_major py_minor
+    py_major=$(echo "$py_ver" | cut -d. -f1)
+    py_minor=$(echo "$py_ver" | cut -d. -f2)
+
+    if [ "$py_major" -ge 3 ] && [ "$py_minor" -ge 11 ]; then
+        local shim_dir="$VENV_DIR/lib/python${py_major}.${py_minor}/site-packages"
+        if [ ! -f "$shim_dir/openwb_py313_compat.py" ]; then
+            log "Installiere asyncio.coroutine Shim (Python ${py_major}.${py_minor})..."
+            sudo mkdir -p "$shim_dir"
+            sudo tee "$shim_dir/openwb_py313_compat.py" > /dev/null << 'PYEOF'
+import asyncio
+import types
+import sys
+if sys.version_info >= (3, 11) and not hasattr(asyncio, "coroutine"):
+    def _coroutine_compat(func):
+        return types.coroutine(func)
+    asyncio.coroutine = _coroutine_compat
+PYEOF
+            echo "import openwb_py313_compat" | sudo tee "$shim_dir/openwb_py313_compat.pth" > /dev/null
+            sudo chown "$OPENWB_USER:$OPENWB_USER" "$shim_dir/openwb_py313_compat.py" "$shim_dir/openwb_py313_compat.pth" 2>/dev/null || true
+            log_success "asyncio.coroutine Shim installiert"
+        fi
+    fi
+
+    # Config
+    sudo tee "$VENV_DIR/.openwb-venv-config" > /dev/null << EOF
+VENV_VERSION_INSTALLED="1.0.0"
+VENV_CREATED="$(date +'%Y-%m-%d %H:%M:%S')"
+VENV_PYTHON_VERSION="$(python3 --version 2>&1 | awk '{print $2}')"
+VENV_DIR="$VENV_DIR"
+EOF
+    if id "$OPENWB_USER" &>/dev/null; then
+        sudo chown -R "$OPENWB_USER:$OPENWB_USER" "$VENV_DIR"
+    fi
+
+    log_success "venv erstellt mit Python $($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
+}
+
+# ============================================================================
+# Python-Modus: Python 3.9.23 kompilieren (Legacy, Original-System)
+# ============================================================================
+do_python_39() {
+    log_step "Python 3.9.23 Kompilierung (Legacy-Modus, 30-60 Min)"
+
+    log_warning "Dies überschreibt das System-Python mit Python 3.9.23!"
+    log_warning "Dauer: 30-60 Minuten je nach Hardware"
+    echo ""
+
+    if [ "$NONINTERACTIVE" -ne 1 ]; then
+        read -p "Wirklich fortfahren? (j/N): " -n 1 -r < /dev/tty
+        echo
+        if [[ ! "$REPLY" =~ ^[JjYy]$ ]]; then
+            log "Abgebrochen"
+            exit 0
+        fi
+    fi
+
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        vim bc jq socat sshpass sudo ssl-cert \
+        apache2 libapache2-mod-php php php-gd php-curl php-xml php-json \
+        git mosquitto mosquitto-clients python3-pip \
+        build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
+        libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev \
+        libbz2-dev liblzma-dev libgdbm-compat-dev libdb5.3-dev \
+        uuid-dev tk-dev libexpat1-dev libmpdec-dev \
+        wget curl make gcc g++ pkg-config \
+        libxml2-dev libxslt1-dev
+
+    if is_arm_arch && is_raspberry_pi; then
+        if apt-cache show liblgpio-dev >/dev/null 2>&1; then
+            sudo apt-get install -y liblgpio-dev
+        fi
+    fi
+
+    log "Lade Python 3.9.23 Quellcode..."
+    cd /tmp
+    wget -q https://www.python.org/ftp/python/3.9.23/Python-3.9.23.tgz
+    tar -xzf Python-3.9.23.tgz
+    cd Python-3.9.23
+
+    log "Konfiguriere Python 3.9.23..."
+    ./configure \
+        --enable-optimizations \
+        --with-ensurepip=install \
+        --enable-shared \
+        --enable-loadable-sqlite-extensions \
+        --with-system-expat \
+        --with-system-ffi
+
+    log "Kompiliere Python 3.9.23..."
+    local available_ram cpu_cores jobs
+    available_ram=$(free -g | awk 'NR==2{print $7}')
+    cpu_cores=$(nproc)
+    if [ "${available_ram:-0}" -lt 2 ]; then
+        jobs=1
+    elif [ "${available_ram:-0}" -lt 4 ]; then
+        jobs=2
+    else
+        jobs=$((cpu_cores > 4 ? 4 : cpu_cores))
+    fi
+    log "Nutze $jobs Jobs (RAM: ${available_ram:-?}GB, Cores: $cpu_cores)"
+    make -j"$jobs"
+
+    make test || log_warning "Einige Tests fehlgeschlagen (kann ignoriert werden)"
+
+    log "Installiere Python 3.9.23..."
+    sudo make install
+    sudo ldconfig
+    sudo ln -sf /usr/local/bin/python3 /usr/local/bin/python
+    sudo ln -sf /usr/local/bin/pip3 /usr/local/bin/pip
+
+    /usr/local/bin/pip3 install rpi-lgpio 2>/dev/null || true
+
+    cd /
+    rm -rf /tmp/Python-3.9.23*
+
+    log_success "Python 3.9.23 installiert: $(python3 --version 2>&1)"
+}
+
+# ============================================================================
+# OpenWB Installation (gemeinsam für beide Modi)
+# ============================================================================
+do_openwb_install() {
+    log_step "OpenWB Installation"
+
+    if [ -f "$OPENWB_DIR/openwb.sh" ]; then
+        log "OpenWB bereits installiert, überspringe"
+        return 0
+    fi
+
+    ensure_free_space_mb 2500
+    sudo mkdir -p /var/www/html
+    sudo chown root:root /var/www /var/www/html 2>/dev/null || true
+
+    local tmp_dir install_script packages_script
+    tmp_dir=$(mktemp -d)
+    install_script="$tmp_dir/openwb-install.sh"
+    packages_script="$tmp_dir/install_packages.sh"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    log "Lade OpenWB Installer..."
+    curl -fsSL https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh -o "$install_script"
+    curl -fsSL https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh -o "$packages_script"
+
+    # Upstream-Skripte robuster machen
+    sed -i \
+        -e 's|sudo apt-get -q update|sudo DEBIAN_FRONTEND=noninteractive apt-get -q update|g' \
+        -e 's|sudo apt-get -q -y install|sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install|g' \
+        "$packages_script"
+
+    # pip-Aufrufe auf venv umleiten (falls venv-Modus)
+    if [ "$MODE" = "venv" ]; then
+        sed -i \
+            -e "s@curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s@bash \"$packages_script\"@g" \
+            -e 's@mkdir "$OPENWBBASEDIR"@mkdir -p "$OPENWBBASEDIR"@g' \
+            -e "s@sudo -u \"\\\$OPENWB_USER\" pip install -r \"\\\${OPENWBBASEDIR}/requirements.txt\"@/opt/openwb-venv/bin/pip3 install -U pip setuptools wheel; /opt/openwb-venv/bin/pip3 install -r \"\\\${OPENWBBASEDIR}/requirements.txt\"@g" \
+            -e 's@^/usr/sbin/groupadd "\$OPENWB_GROUP"$@/usr/sbin/groupadd "$OPENWB_GROUP" || true@g' \
+            -e 's@^/usr/sbin/useradd "\$OPENWB_USER" -g "\$OPENWB_GROUP" --create-home$@/usr/sbin/useradd "$OPENWB_USER" -g "$OPENWB_GROUP" --create-home || true@g' \
+            -e 's@^ln -s "\${OPENWBBASEDIR}/data/config/openwb2.service"@ln -sfn "${OPENWBBASEDIR}/data/config/openwb2.service"@g' \
+            -e 's@^ln -s "\${OPENWBBASEDIR}/data/config/openwb-simpleAPI.service"@ln -sfn "${OPENWBBASEDIR}/data/config/openwb-simpleAPI.service"@g' \
+            "$install_script"
+
+        sed -E -i \
+            -e "s@(^[[:space:]]*sudo -u \"\\\$OPENWB_USER\"[[:space:]]+)pip([[:space:]]+install[[:space:]]+-r[[:space:]]+)@/opt/openwb-venv/bin/pip3\\2@g" \
+            -e "s@(^[[:space:]]*)pip([[:space:]]+install[[:space:]]+-r[[:space:]]+)@/opt/openwb-venv/bin/pip3\\2@g" \
+            "$install_script"
+    else
+        sed -i \
+            -e "s@curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s@bash \"$packages_script\"@g" \
+            -e 's@mkdir "$OPENWBBASEDIR"@mkdir -p "$OPENWBBASEDIR"@g' \
+            -e 's@^/usr/sbin/groupadd "\$OPENWB_GROUP"$@/usr/sbin/groupadd "$OPENWB_GROUP" || true@g' \
+            -e 's@^/usr/sbin/useradd "\$OPENWB_USER" -g "\$OPENWB_GROUP" --create-home$@/usr/sbin/useradd "$OPENWB_USER" -g "$OPENWB_GROUP" --create-home || true@g' \
+            "$install_script"
+    fi
+
+    sed -i '2i set -Eeuo pipefail' "$install_script"
+
+    log "Führe OpenWB Installer aus..."
+    sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
+    log_success "OpenWB installiert"
+}
+
+# ============================================================================
+# Runtime Patches (modus-abhängig)
+# ============================================================================
+do_runtime_patches() {
+    if [ ! -d "$OPENWB_DIR" ]; then
+        log_warning "OpenWB-Verzeichnis nicht gefunden, überspringe Runtime-Patches"
+        return 0
+    fi
+
+    log_step "Runtime Patches"
+
+    local atreboot="$OPENWB_DIR/runs/atreboot.sh"
+    local service="$OPENWB_DIR/data/config/openwb2.service"
+    local simpleapi="$OPENWB_DIR/data/config/openwb-simpleAPI.service"
+    local remote_service="/etc/systemd/system/openwbRemoteSupport.service"
+
+    # Services stoppen
+    for svc in openwb2 openwb; do
+        if systemctl is-active "$svc" &>/dev/null; then
+            sudo systemctl stop "$svc" 2>/dev/null || true
+        fi
+    done
+
+    if [ "$MODE" = "venv" ]; then
+        local venv_python="$VENV_DIR/bin/python3"
+        local venv_pip="$VENV_DIR/bin/pip3"
+
+        # openwb2.service
+        if [ -f "$service" ]; then
+            log "Patche openwb2.service -> venv Python..."
+            sudo sed -i "s#^ExecStart=.*main.py#ExecStart=$venv_python $OPENWB_DIR/packages/main.py#g" "$service"
+        fi
+
+        # simpleAPI.service
+        if [ -f "$simpleapi" ]; then
+            log "Patche simpleAPI.service -> venv Python..."
+            sudo sed -i -E 's@^ExecStart=.*simpleAPI_mqtt\.py$@ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py@g' "$simpleapi"
+            sudo ln -sfn "$simpleapi" /etc/systemd/system/openwb-simpleAPI.service
+        fi
+
+        # remoteSupport.service
+        if [ -f "$remote_service" ]; then
+            sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $OPENWB_DIR/runs/remoteSupport/remoteSupport.py#g" "$remote_service"
+        fi
+
+        # atreboot.sh: Alle pip3 Aufrufe -> venv pip
+        if [ -f "$atreboot" ]; then
+            log "Patche atreboot.sh -> venv pip..."
+            sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$atreboot"
+            sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+--only-binary@\1/opt/openwb-venv/bin/pip3 install --only-binary@g' "$atreboot"
+            sudo sed -i 's|pip uninstall urllib3 -y|/opt/openwb-venv/bin/pip3 uninstall urllib3 -y|g' "$atreboot"
+            sudo chmod +x "$atreboot"
+        fi
+
+        # requirements.txt für Python 3.13 patchen
+        local req="$OPENWB_DIR/requirements.txt"
+        if [ -f "$req" ]; then
+            log "Patche requirements.txt für Python 3.13..."
+            sudo sed -E -i \
+                -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]*)$/# jq entfernt (System-jq via apt)\1/' \
+                -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
+                -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
+                "$req"
+        fi
+    fi
+
+    # mosquitto_local systemd Unit (für beide Modi)
+    ensure_mosquitto_local_unit
+
+    sudo systemctl daemon-reload
+    log_success "Runtime Patches angewendet"
+}
+
+# ============================================================================
+# Post-Update Hook installieren
+# ============================================================================
+do_post_update_hook() {
+    log_step "Post-Update Hook"
+
+    local hook_src="$SCRIPT_DIR/openwb_post_update_hook.sh"
+    if [ ! -f "$hook_src" ]; then
+        log_warning "post-update hook nicht gefunden: $hook_src"
+        return 0
+    fi
+
+    sudo mkdir -p "$OPENWB_DIR/data/config"
+    sudo cp "$hook_src" "$OPENWB_DIR/data/config/post-update.sh"
+    sudo chmod +x "$OPENWB_DIR/data/config/post-update.sh"
+    log_success "Post-Update Hook installiert"
+}
+
+# ============================================================================
+# Finale Überprüfung
+# ============================================================================
+do_final_check() {
+    log_step "Überprüfung"
+
+    echo ""
+    echo "┌─────────────────────────────────────────────────────┐"
+    echo "│        OpenWB Trixie - Installation abgeschlossen    │"
+    echo "├─────────────────────────────────────────────────────┤"
+
+    # Debian
+    local deb_ver
+    deb_ver=$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-${VERSION:-?}}" || echo "?")
+    printf "│ %-22s %28s │\n" "Debian" "$deb_ver"
+
+    # Python
+    if [ "$MODE" = "venv" ]; then
+        printf "│ %-22s %28s │\n" "Python (System)" "$(python3 --version 2>&1 | awk '{print $2}')"
+        printf "│ %-22s %28s │\n" "Python (venv)" "$($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
+        printf "│ %-22s %28s │\n" "venv" "$VENV_DIR"
+    else
+        printf "│ %-22s %28s │\n" "Python" "$(python3 --version 2>&1 | awk '{print $2}')"
+    fi
+
+    # Platform
+    printf "│ %-22s %28s │\n" "Architektur" "$(uname -m)"
+    printf "│ %-22s %28s │\n" "Platform" "$(is_raspberry_pi && echo 'Raspberry Pi' || echo 'Generic')"
+
+    # Services
+    printf "│ %-22s %28s │\n" "Post-Update Hook" "installiert"
+
+    echo "├─────────────────────────────────────────────────────┤"
+    echo "│ Services:                                            │"
+    for svc in mosquitto mosquitto_local openwb2 openwb-simpleAPI apache2; do
+        local status
+        status=$(systemctl is-active "$svc" 2>/dev/null || echo "?")
+        if [ "$status" = "active" ]; then
+            printf "│   %-36s %12s │\n" "$svc" "OK"
+        else
+            printf "│   %-36s %12s │\n" "$svc" "$status"
+        fi
+    done
+
+    echo "├─────────────────────────────────────────────────────┤"
+    echo "│ Web-Interface: http://$(hostname -I 2>/dev/null | awk '{print $1}')"
+    echo "│                                                      │"
+    echo "│ Nächste Schritte:                                    │"
+    if is_arm_arch && is_raspberry_pi; then
+        echo "│   1. sudo reboot (GPIO-Konfiguration aktivieren)    │"
+    fi
+    echo "│   2. Im Browser öffnen und OpenWB konfigurieren     │"
+    echo "└─────────────────────────────────────────────────────┘"
+    echo ""
+}
+
+# ============================================================================
+# HAUPTPROGRAMM
+# ============================================================================
+main() {
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════╗"
+    echo "║       OpenWB Trixie Installer v$INSTALLER_VERSION          ║"
+    echo "║       Für FRISCHE Debian Trixie Installationen       ║"
+    echo "╚═══════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Trixie prüfen
+    if ! is_trixie; then
+        log_error "Dies ist KEIN Debian Trixie System!"
+        log_error "Bitte zuerst Debian Trixie installieren."
+        echo ""
+        echo "Download: https://www.debian.org/devel/"
+        exit 1
+    fi
+    log_success "Debian Trixie erkannt"
+
+    # Modus-Auswahl
+    if [ -z "$MODE" ]; then
+        echo ""
+        echo "Wie soll Python installiert werden?"
+        echo ""
+        echo "  [1] System-Python + venv (EMPFOHLEN)"
+        echo "      - Nutzt das Trixie System-Python (3.12/3.13/3.14)"
+        echo "      - Pakete isoliert im Virtual Environment"
+        echo "      - Schnell: ~10-15 Minuten"
+        echo "      - Update-resistent (automatischer Post-Update Hook)"
+        echo ""
+        echo "  [2] Python 3.9.23 kompilieren (ORIGINAL-GETREU)"
+        echo "      - Kompiliert Python 3.9.23 aus Quellcode"
+        echo "      - Keine Anpassungen am OpenWB-Code nötig"
+        echo "      - Überschreibt das System-Python"
+        echo "      - Langsam: ~30-60 Minuten"
+        echo ""
+        if [ "$NONINTERACTIVE" -eq 1 ]; then
+            log_warning "Non-interactive Modus: wähle venv"
+            MODE="venv"
+        else
+            while true; do
+                read -p "Wahl [1/2]: " -n 1 -r < /dev/tty
+                echo
+                case "$REPLY" in
+                    1|"") MODE="venv";  break ;;
+                    2)    MODE="python39"; break ;;
+                    *)    echo "Bitte 1 oder 2 eingeben" ;;
+                esac
+            done
+        fi
+    fi
+
+    echo ""
+    if [ "$MODE" = "venv" ]; then
+        log_success "Modus: System-Python + venv (schnell, modern)"
+    else
+        log_success "Modus: Python 3.9.23 kompilieren (original-getreu)"
+    fi
+    echo ""
+
+    # Als openwb-User ausführen
+    run_as_openwb_user
+
+    # ── Schritt 1: System aktualisieren ──
+    log_step "Schritt 1/8: System aktualisieren"
+    recover_dpkg_if_needed
+    sudo apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
+
+    # ── Schritt 2: Deutsche Standards ──
+    log_step "Schritt 2/8: Deutsche Standards"
+    configure_german_defaults
+
+    # ── Schritt 3: Build-Abhängigkeiten ──
+    log_step "Schritt 3/8: Abhängigkeiten installieren"
+    recover_dpkg_if_needed
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y \
+        swig build-essential python3-dev python3-pip python3-venv \
+        pkg-config libffi-dev libxml2-dev libxslt1-dev zlib1g-dev \
+        git curl wget usbutils dnsmasq inotify-tools \
+        apache2 libapache2-mod-php php php-gd php-curl php-xml php-json \
+        mosquitto mosquitto-clients
+
+    if is_arm_arch && is_raspberry_pi; then
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y libgpiod-dev 2>/dev/null || true
+        if apt-cache show liblgpio-dev >/dev/null 2>&1; then
+            sudo DEBIAN_FRONTEND=noninteractive apt install -y liblgpio-dev
+        fi
+        if apt-cache show python3-rpi-lgpio >/dev/null 2>&1; then
+            sudo DEBIAN_FRONTEND=noninteractive apt install -y python3-rpi-lgpio
+        fi
+    fi
+    log_success "Abhängigkeiten installiert"
+
+    # ── Schritt 4: Repository klonen ──
+    log_step "Schritt 4/8: Repository vorbereiten"
+    if [ ! -d "/home/$OPENWB_USER/openwb-trixie" ]; then
+        log "Klone Repository..."
+        sudo mkdir -p "/home/$OPENWB_USER"
+        cd "/home/$OPENWB_USER"
+        git clone https://github.com/Xerolux/openwb-trixie.git
+        cd openwb-trixie
+        SCRIPT_DIR="$(pwd)"
+    else
+        log "Repository vorhanden"
+        cd "/home/$OPENWB_USER/openwb-trixie"
+        SCRIPT_DIR="$(pwd)"
+    fi
+
+    # ── Schritt 5: GPIO ──
+    log_step "Schritt 5/8: GPIO-Konfiguration"
+    configure_gpio
+
+    # ── Schritt 6: PHP ──
+    log_step "Schritt 6/8: PHP konfigurieren"
+    configure_php
+
+    # ── Schritt 7: Python ──
+    if [ "$MODE" = "venv" ]; then
+        log_step "Schritt 7/8: Python venv erstellen"
+        do_python_venv
+    else
+        log_step "Schritt 7/8: Python 3.9.23 kompilieren"
+        do_python_39
+    fi
+
+    # ── Schritt 8: OpenWB ──
+    log_step "Schritt 8/8: OpenWB installieren + patches"
+    do_openwb_install
+    do_runtime_patches
+    do_post_update_hook
+
+    # Services starten
+    log "Starte Services..."
+    sudo systemctl daemon-reload
+    for svc in mosquitto mosquitto_local; do
+        sudo systemctl enable "$svc" 2>/dev/null || true
+        sudo systemctl restart "$svc" 2>/dev/null || true
+    done
+    sudo systemctl enable openwb2 2>/dev/null || true
+    sudo systemctl restart openwb2 2>/dev/null || true
+    sleep 3
+    sudo systemctl restart openwb-simpleAPI 2>/dev/null || true
+
+    # Finale Überprüfung
+    do_final_check
+}
+
+main "$@"
