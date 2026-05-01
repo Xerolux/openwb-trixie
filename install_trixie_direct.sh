@@ -410,8 +410,9 @@ patch_openwb_runtime_scripts() {
 }
 
 cleanup_venv_artifacts() {
-    local sp="/opt/openwb-venv/lib/python3.13/site-packages"
-    if [ -d "$sp" ]; then
+    local sp
+    sp=$(ls -d /opt/openwb-venv/lib/python3.*/site-packages 2>/dev/null | head -1)
+    if [ -n "$sp" ] && [ -d "$sp" ]; then
         log "Bereinige verwaiste venv-Artefakte (~*)..."
         sudo find "$sp" -maxdepth 1 -name '~*' -exec rm -rf {} + 2>/dev/null || true
     fi

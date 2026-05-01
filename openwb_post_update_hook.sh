@@ -109,8 +109,9 @@ reapply_openwb_patches() {
         log_success "simpleAPI.service gepatcht (venv-python)"
     fi
 
-    local shim_dir="/opt/openwb-venv/lib/python3.13/site-packages"
-    if [ -d "$shim_dir" ] && [ ! -f "$shim_dir/openwb_py313_compat.py" ]; then
+    local shim_dir
+    shim_dir=$(ls -d /opt/openwb-venv/lib/python3.*/site-packages 2>/dev/null | head -1)
+    if [ -n "$shim_dir" ] && [ -d "$shim_dir" ] && [ ! -f "$shim_dir/openwb_py313_compat.py" ]; then
         printf 'import asyncio\nimport types\nimport sys\nif sys.version_info >= (3, 11) and not hasattr(asyncio, "coroutine"):\n    def _coroutine_compat(func):\n        return types.coroutine(func)\n    asyncio.coroutine = _coroutine_compat\n' > "$shim_dir/openwb_py313_compat.py"
         echo 'import openwb_py313_compat' > "$shim_dir/openwb_py313_compat.pth"
         log_success "asyncio.coroutine Kompatibilitaets-Shim installiert"
