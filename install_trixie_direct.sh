@@ -304,9 +304,16 @@ sudo apt install -y \
     python3-pip \
     python3-venv \
     pkg-config \
-    liblgpio-dev \
     libgpiod-dev \
     libffi-dev
+
+# liblgpio-dev ist nicht auf allen Debian/Trixie-Systemen verfügbar
+if apt-cache show liblgpio-dev &>/dev/null; then
+    sudo apt install -y liblgpio-dev
+    log_success "liblgpio-dev installiert"
+else
+    log_warning "liblgpio-dev nicht verfügbar, überspringe"
+fi
 
 # python3-rpi-lgpio separat installieren (existiert nur auf Raspberry Pi)
 if apt-cache show python3-rpi-lgpio &>/dev/null; then
