@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="4186526"
+BUILD_ID="b76e539"
 
 # ============================================================================
 # Argumente parsen
@@ -1232,6 +1232,8 @@ main() {
 
         if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
             cd "/home/$OPENWB_USER/openwb-trixie"
+            log "Aktualisiere Repository..."
+            git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
             PATCHES_SRC_DIR="$(pwd)"
         elif [ -d "$SCRIPT_DIR/patches" ]; then
             PATCHES_SRC_DIR="$SCRIPT_DIR"
@@ -1241,6 +1243,13 @@ main() {
             git clone https://github.com/Xerolux/openwb-trixie.git
             cd openwb-trixie
             PATCHES_SRC_DIR="$(pwd)"
+        fi
+
+        log "Suche Patches in $PATCHES_SRC_DIR/patches ..."
+        if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
+            log_error "patches/ Verzeichnis nicht gefunden in $PATCHES_SRC_DIR"
+            log_error "Bitte prüfe ob das Repository aktuell ist"
+            exit 1
         fi
 
         patches_apply_enabled
