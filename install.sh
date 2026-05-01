@@ -427,8 +427,8 @@ do_python_39() {
 
     log "Lade Python 3.9.25 Quellcode..."
     cd /tmp
-    wget -q https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tgz
-    tar -xzf Python-3.9.25.tgz
+    wget -q https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tar.xz
+    tar -xJf Python-3.9.25.tar.xz
     cd Python-3.9.25
 
     log "Konfiguriere Python 3.9.25..."

@@ -281,11 +281,11 @@ sudo apt-get -q -y install \
 # 3. Python 3.9.25 Quellcode herunterladen
 echo "3. Python 3.9.25 Quellcode wird heruntergeladen..."
 cd /tmp
-wget https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tgz
+wget https://www.python.org/ftp/python/3.9.25/Python-3.9.25.tar.xz
 
 # 4. Archiv extrahieren
 echo "4. Archiv wird extrahiert..."
-tar -xzf Python-3.9.25.tgz
+tar -xJf Python-3.9.25.tar.xz
 cd Python-3.9.25
 
 # 5. Konfiguration (ohne LTO für weniger RAM-Verbrauch)
