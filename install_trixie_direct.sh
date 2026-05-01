@@ -74,6 +74,19 @@ on_error() {
 
 trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
+# PHP-Version dynamisch ermitteln
+detect_php_version() {
+    local v
+    if command -v php >/dev/null 2>&1; then
+        v=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;' 2>/dev/null)
+        [ -n "$v" ] && echo "$v" && return
+    fi
+    for v in 8.4 8.3 8.2 8.1; do
+        [ -d "/etc/php/$v" ] && echo "$v" && return
+    done
+    echo "8.4"
+}
+
 configure_openwb_venv_runtime() {
     local openwb_dir="$1"
     local venv_python="/opt/openwb-venv/bin/python3"
@@ -90,6 +103,13 @@ configure_openwb_venv_runtime() {
         log_warning "venv-Python/Pip nicht gefunden, überspringe Runtime-Anpassungen"
         return 0
     fi
+
+    # Services stoppen vor dem Patchen (verhindert Race Conditions)
+    for svc in openwb2 openwb; do
+        if systemctl is-active "$svc" &>/dev/null; then
+            sudo systemctl stop "$svc" && log "Gestoppt: $svc"
+        fi
+    done
 
     if [ -f "$service_file" ]; then
         log "Passe openwb2.service auf venv-Python an..."
@@ -111,7 +131,15 @@ configure_openwb_venv_runtime() {
     fi
 
     sudo systemctl daemon-reload || true
-    log_success "openWB Runtime auf venv umgestellt (falls Dateien vorhanden)"
+
+    # Services neu starten nach dem Patchen
+    for svc in openwb2 openwb; do
+        if systemctl is-enabled "$svc" &>/dev/null; then
+            sudo systemctl restart "$svc" && log_success "Neugestartet: $svc"
+        fi
+    done
+
+    log_success "openWB Runtime auf venv umgestellt"
 }
 
 show_service_status() {
@@ -286,10 +314,11 @@ fi
 
 # Schritt 5: PHP Upload-Limits konfigurieren
 log "=== Schritt 5: PHP konfigurieren ==="
-sudo mkdir -p /etc/php/8.4/apache2/conf.d/ 2>/dev/null || true
-echo "upload_max_filesize = 300M" | sudo tee /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
-echo "post_max_size = 300M" | sudo tee -a /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
-log_success "PHP Upload-Limits auf 300M gesetzt"
+PHP_VER=$(detect_php_version)
+log "Erkannte PHP-Version: $PHP_VER"
+sudo mkdir -p "/etc/php/$PHP_VER/apache2/conf.d/" 2>/dev/null || true
+printf 'upload_max_filesize = 300M\npost_max_size = 300M\n' | sudo tee "/etc/php/$PHP_VER/apache2/conf.d/20-uploadlimit.ini" > /dev/null
+log_success "PHP Upload-Limits auf 300M gesetzt (PHP $PHP_VER)"
 
 # Schritt 6: Virtual Environment erstellen
 log "=== Schritt 6: Virtual Environment Setup ==="

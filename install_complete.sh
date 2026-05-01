@@ -102,6 +102,13 @@ configure_openwb_venv_runtime() {
         return 0
     fi
 
+    # Services stoppen vor dem Patchen (verhindert Race Conditions)
+    for svc in openwb2 openwb; do
+        if systemctl is-active "$svc" &>/dev/null; then
+            sudo systemctl stop "$svc" && log "Gestoppt: $svc"
+        fi
+    done
+
     if [ -f "$service_file" ]; then
         log "Passe openwb2.service auf venv-Python an..."
         sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/packages/main.py#g" "$service_file"
@@ -118,7 +125,15 @@ configure_openwb_venv_runtime() {
     fi
 
     sudo systemctl daemon-reload || true
-    log_success "openWB Runtime auf venv umgestellt (falls Dateien vorhanden)"
+
+    # Services neu starten nach dem Patchen
+    for svc in openwb2 openwb; do
+        if systemctl is-enabled "$svc" &>/dev/null; then
+            sudo systemctl restart "$svc" && log_success "Neugestartet: $svc"
+        fi
+    done
+
+    log_success "openWB Runtime auf venv umgestellt"
 }
 
 is_trixie() {
@@ -319,8 +334,8 @@ main() {
                 log "Python 3.9.23 wird kompiliert und installiert..."
                 chmod +x install_python3.9.sh
 
-                # Führe Installation automatisch aus (mit 'y' Antwort)
-                echo "y" | ./install_python3.9.sh
+                # OPENWB_VENV_NONINTERACTIVE=1 überspringt alle read-Prompts im Script
+                OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh
 
                 log_warning "Python-Installation abgeschlossen, Neustart erforderlich"
                 reboot_and_continue "4"

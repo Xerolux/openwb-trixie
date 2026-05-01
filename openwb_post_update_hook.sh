@@ -5,7 +5,20 @@
 # Installation: Kopiere dieses Script nach /var/www/html/openWB/data/config/post-update.sh
 #               oder verlinke es entsprechend in das OpenWB-Update-System
 
-set -e
+set -Ee -o pipefail
+
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    echo -e "\033[0;31m[OpenWB-Hook] ✗\033[0m Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    # venv deaktivieren falls aktiv
+    if [[ "$(type -t deactivate)" = "function" ]]; then
+        deactivate 2>/dev/null || true
+    fi
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 # Hilfe anzeigen
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
