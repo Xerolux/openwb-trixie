@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.20"
+INSTALLER_VERSION="2026-05-01.21"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -230,6 +230,19 @@ show_service_status() {
     fi
 }
 
+ensure_openwb_runtime_prereqs() {
+    log "Installiere Laufzeit-Tools (usbutils, dnsmasq)..."
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y usbutils dnsmasq || log_warning "Konnte usbutils/dnsmasq nicht vollständig installieren"
+
+    if getent group gpio >/dev/null 2>&1; then
+        log "Gruppe 'gpio' existiert bereits"
+    else
+        log "Lege fehlende Gruppe 'gpio' an..."
+        sudo groupadd gpio || true
+    fi
+    sudo usermod -aG gpio "$OPENWB_USER" || true
+}
+
 is_trixie() {
     if [ -r /etc/os-release ]; then
         # shellcheck disable=SC1091
@@ -337,6 +350,25 @@ prepare_openwb_requirements_for_py313() {
     if [ -x /opt/openwb-venv/bin/pip3 ]; then
         log "Aktualisiere pip/setuptools/wheel im venv..."
         /opt/openwb-venv/bin/pip3 install -U pip setuptools wheel
+    fi
+}
+
+patch_openwb_runtime_scripts() {
+    local openwb_dir="$1"
+    local atreboot_file="$openwb_dir/runs/atreboot.sh"
+
+    if [ -f "$atreboot_file" ]; then
+        log "Patch: atreboot.sh auf venv-pip (PEP668-sicher)..."
+        sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$atreboot_file"
+        sudo chmod +x "$atreboot_file"
+    fi
+}
+
+cleanup_venv_artifacts() {
+    local sp="/opt/openwb-venv/lib/python3.13/site-packages"
+    if [ -d "$sp" ]; then
+        log "Bereinige verwaiste venv-Artefakte (~*)..."
+        sudo find "$sp" -maxdepth 1 -name '~*' -exec rm -rf {} + 2>/dev/null || true
     fi
 }
 
@@ -468,6 +500,7 @@ else
     log "Kein Raspberry Pi mit ARM/ARM64 erkannt, überspringe liblgpio-dev und python3-rpi-lgpio"
 fi
 log_success "Build-Abhängigkeiten erfolgreich installiert"
+ensure_openwb_runtime_prereqs
 
 # Schritt 3: Git installieren und Repository klonen (falls nicht vorhanden)
 log "=== Schritt 3: Repository vorbereiten ==="
@@ -557,6 +590,7 @@ chmod +x install_python3.9.sh
 # Non-interaktiver venv-Setup ohne Rückfragen
 if OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only; then
     log_success "Virtual Environment erfolgreich erstellt"
+    cleanup_venv_artifacts
 else
     log_error "Fehler beim venv-Setup"
     exit 1
@@ -587,6 +621,8 @@ for candidate in "/var/www/html/openWB" "/home/openwb/openWB" "/home/openwb/open
 done
 if [ -n "$OPENWB_RUNTIME_DIR" ]; then
     configure_openwb_venv_runtime "$OPENWB_RUNTIME_DIR"
+    patch_openwb_runtime_scripts "$OPENWB_RUNTIME_DIR"
+    cleanup_venv_artifacts
 fi
 
 # Schritt 8: Post-Update Hook installieren
