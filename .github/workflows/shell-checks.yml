@@ -1,0 +1,37 @@
+name: Shell Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  shell-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Bash syntax check
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(find . -maxdepth 1 -type f -name '*.sh' | sort)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "No shell scripts found"
+            exit 0
+          fi
+          bash -n "${scripts[@]}"
+
+      - name: ShellCheck lint
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(find . -maxdepth 1 -type f -name '*.sh' | sort)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "No shell scripts found"
+            exit 0
+          fi
+          shellcheck -S error "${scripts[@]}"
