@@ -16,6 +16,16 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+on_error() {
+    local exit_code="$1"
+    local line_no="$2"
+    local cmd="$3"
+    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ✗${NC} Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
+    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ✗${NC} Tipp: Prüfe auch /opt/openwb-venv und die apt-/pip-Ausgaben direkt oberhalb."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
 # Konfiguration
 VENV_DIR="/opt/openwb-venv"
 VENV_CONFIG="$VENV_DIR/.openwb-venv-config"
@@ -98,7 +108,7 @@ create_venv() {
         else
             read -p "Möchtest du es neu erstellen? (j/N): " -n 1 -r
             echo
-            if [[ $REPLY =~ ^[Jj]$ ]]; then
+            if [[ "$REPLY" =~ ^[Jj]$ ]]; then
                 log_warning "Lösche existierendes venv..."
                 sudo rm -rf "$VENV_DIR"
             else
@@ -119,7 +129,9 @@ create_venv() {
         sudo chown -R openwb:openwb "$VENV_DIR"
     else
         log_warning "User 'openwb' nicht gefunden, nutze aktuellen User"
-        sudo chown -R $USER:$USER "$VENV_DIR"
+        local current_user
+        current_user="${USER:-$(id -un)}"
+        sudo chown -R "${current_user}:${current_user}" "$VENV_DIR"
     fi
 
     # Erstelle venv (inkl. Systempakete für Hardware-Treiber)
@@ -179,6 +191,8 @@ install_dependencies() {
 
     local filtered_requirements
     filtered_requirements=$(mktemp)
+    # Sicherstellen dass Tempfile immer gelöscht wird
+    trap "rm -f '$filtered_requirements'" RETURN
     filter_requirements "$filtered_requirements"
 
     # Installiere Requirements (ohne rpi-lgpio)
@@ -197,7 +211,6 @@ install_dependencies() {
     # Kopiere requirements.txt für Vergleiche
     cp "$REQUIREMENTS_FILE" "$VENV_DIR/requirements.txt"
 
-    rm -f "$filtered_requirements"
     deactivate
     log_success "Abhängigkeiten erfolgreich installiert"
 }
@@ -248,6 +261,8 @@ update_venv() {
 
     local filtered_requirements
     filtered_requirements=$(mktemp)
+    # Sicherstellen dass Tempfile immer gelöscht wird
+    trap "rm -f '$filtered_requirements'" RETURN
     filter_requirements "$filtered_requirements"
 
     # Prüfe ob requirements.txt sich geändert hat
@@ -272,7 +287,6 @@ update_venv() {
     fi
     cp "$REQUIREMENTS_FILE" "$VENV_DIR/requirements.txt"
 
-    rm -f "$filtered_requirements"
     deactivate
     log_success "venv erfolgreich aktualisiert"
 }
@@ -333,8 +347,8 @@ create_systemd_helper() {
 # [Service]
 # EnvironmentFile=/opt/openwb-venv/systemd-environment
 
-PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin
-VIRTUAL_ENV=$VENV_DIR
+PATH="$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+VIRTUAL_ENV="$VENV_DIR"
 PYTHONHOME=
 EOF
 
@@ -416,17 +430,6 @@ main() {
 
     log_success "=== Installation abgeschlossen! ==="
 }
-
-# Fehlerbehandlung mit klarer Ausgabe
-on_error() {
-    local exit_code="$1"
-    local line_no="$2"
-    local cmd="$3"
-    log_error "Fehler in Zeile $line_no: $cmd (Exit-Code: $exit_code)"
-    log_error "Tipp: Prüfe auch /opt/openwb-venv und die apt-/pip-Ausgaben direkt oberhalb."
-}
-
-trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 # Script ausführen
 main "$@"

@@ -10,8 +10,11 @@
 #   --with-venv    Erstellt venv mit System-Python (KEINE Kompilierung, empfohlen!)
 #   --venv-only    Nur venv erstellen/aktualisieren (KEINE Python-Installation)
 #   --help         Zeigt diese Hilfe
+#
+# Umgebungsvariablen:
+#   OPENWB_VENV_NONINTERACTIVE=1   Keine interaktiven Rückfragen (für automatische Aufrufe)
 
-set -Ee -o pipefail  # Script bei Fehlern beenden
+set -Ee -o pipefail
 
 on_error() {
     local exit_code="$1"
@@ -51,13 +54,16 @@ while [[ $# -gt 0 ]]; do
             echo "  --with-venv     Modern: Nutzt System-Python + venv (EMPFOHLEN!)"
             echo "                  ✓ Keine Kompilierung (spart 30-60 Min)"
             echo "                  ✓ Nutzt Trixie System-Python (3.12+)"
-            echo "                  ✓ Kompatibel mit Python 3.14 / 3.15 im venv-Modus"
+            echo "                  ✓ Kompatibel mit Python 3.13/3.14/3.15 im venv-Modus"
             echo "                  ✓ Überlebt OpenWB-Updates"
             echo ""
             echo "  --venv-only     Nur venv erstellen/aktualisieren"
             echo "                  (für Updates oder frische Trixie-Installation)"
             echo ""
             echo "  --help          Zeigt diese Hilfe"
+            echo ""
+            echo "Umgebungsvariablen:"
+            echo "  OPENWB_VENV_NONINTERACTIVE=1   Keine Rückfragen (für Skript-Aufrufe)"
             echo ""
             echo "Empfohlen: ./install_python3.9.sh --with-venv"
             echo ""
@@ -70,6 +76,81 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Hilfsfunktion: PHP-Version dynamisch ermitteln
+detect_php_version() {
+    local v
+    if command -v php >/dev/null 2>&1; then
+        v=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;' 2>/dev/null)
+        [ -n "$v" ] && echo "$v" && return
+    fi
+    for v in 8.4 8.3 8.2 8.1; do
+        [ -d "/etc/php/$v" ] && echo "$v" && return
+    done
+    echo "8.4"
+}
+
+# Hilfsfunktion: OpenWB-Runtime auf venv-Python/pip umstellen (PEP668-Fix)
+configure_openwb_venv_runtime() {
+    local openwb_dir="$1"
+    local venv_python="/opt/openwb-venv/bin/python3"
+    local venv_pip="/opt/openwb-venv/bin/pip3"
+    local service_file="$openwb_dir/data/config/openwb2.service"
+    local remote_service_file="/etc/systemd/system/openwbRemoteSupport.service"
+    local atreboot_file="$openwb_dir/runs/atreboot.sh"
+
+    if [ ! -d "$openwb_dir" ]; then
+        return 0
+    fi
+
+    if [ ! -x "$venv_python" ] || [ ! -x "$venv_pip" ]; then
+        echo "⚠ venv-Python/Pip nicht gefunden, überspringe Runtime-Anpassungen"
+        return 0
+    fi
+
+    echo "Stelle OpenWB Runtime auf venv um: $openwb_dir"
+
+    # Services stoppen vor dem Patchen (verhindert Race Conditions)
+    for svc in openwb2 openwb; do
+        if systemctl is-active "$svc" &>/dev/null; then
+            sudo systemctl stop "$svc" \
+                && echo "  Gestoppt: $svc" \
+                || echo "  ⚠ Konnte $svc nicht stoppen (wird ignoriert)"
+        fi
+    done
+
+    if [ -f "$service_file" ]; then
+        sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/packages/main.py#g" "$service_file"
+        echo "  ✓ openwb2.service auf venv-Python umgestellt"
+    else
+        echo "  ⚠ openwb2.service nicht gefunden: $service_file"
+    fi
+
+    if [ -f "$atreboot_file" ]; then
+        sudo sed -i "s#\\([^[:alnum:]_/.-]\\|^\\)pip3 install -r#\\1$venv_pip install -r#g" "$atreboot_file"
+        echo "  ✓ atreboot.sh auf venv-pip umgestellt (PEP668-sicher)"
+    else
+        echo "  ⚠ atreboot.sh nicht gefunden: $atreboot_file"
+    fi
+
+    if [ -f "$remote_service_file" ]; then
+        sudo sed -i "s#^ExecStart=.*#ExecStart=$venv_python $openwb_dir/runs/remoteSupport/remoteSupport.py#g" "$remote_service_file"
+        echo "  ✓ openwbRemoteSupport.service auf venv-Python umgestellt"
+    fi
+
+    sudo systemctl daemon-reload || true
+
+    # Services neu starten nach dem Patchen
+    for svc in openwb2 openwb; do
+        if systemctl is-enabled "$svc" &>/dev/null; then
+            sudo systemctl restart "$svc" \
+                && echo "  ✓ Neugestartet: $svc" \
+                || echo "  ⚠ Konnte $svc nicht neustarten"
+        fi
+    done
+
+    echo "✓ openWB Runtime auf venv umgestellt"
+}
 
 echo "====================================================================="
 echo "   OpenWB Python Installation"
@@ -88,12 +169,14 @@ else
     echo "⚠ WARNUNG: Überschreibt System-Python!"
     echo "⚠ Dauert 30-60 Minuten!"
     echo ""
-    read -p "Möchtest du stattdessen --with-venv nutzen? (empfohlen) (j/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Jj]$ ]]; then
-        echo "Starte mit --with-venv..."
-        INSTALL_VENV=true
-        VENV_ONLY=true
+    if [[ "${OPENWB_VENV_NONINTERACTIVE:-0}" != "1" ]]; then
+        read -p "Möchtest du stattdessen --with-venv nutzen? (empfohlen) (j/N): " -n 1 -r
+        echo
+        if [[ "$REPLY" =~ ^[Jj]$ ]]; then
+            echo "Starte mit --with-venv..."
+            INSTALL_VENV=true
+            VENV_ONLY=true
+        fi
     fi
 fi
 echo ""
@@ -215,20 +298,17 @@ echo "5. Python wird konfiguriert..."
 
 # 6. Kompilierung (begrenzte Parallelität für weniger RAM-Verbrauch)
 echo "6. Kompilierung startet... (Das kann einige Zeit dauern)"
-# Prüfe verfügbaren RAM und CPU-Kerne
 available_ram=$(free -g | awk 'NR==2{print $7}')
+available_ram=${available_ram:-0}
 cpu_cores=$(nproc)
 
 if [ "$available_ram" -lt 2 ]; then
-    # Wenig RAM: Nur 1 Job parallel
     echo "Wenig RAM erkannt ($available_ram GB), verwende 1 Job..."
     make -j1
 elif [ "$available_ram" -lt 4 ]; then
-    # Mittlerer RAM: 2 Jobs parallel
     echo "Mittlerer RAM erkannt ($available_ram GB), verwende 2 Jobs..."
     make -j2
 else
-    # Genug RAM: Maximal 4 Jobs (auch bei mehr CPU-Kernen)
     jobs=$((cpu_cores > 4 ? 4 : cpu_cores))
     echo "Genug RAM erkannt ($available_ram GB), verwende $jobs Jobs..."
     make -j$jobs
@@ -241,23 +321,29 @@ make test || echo "WARNUNG: Einige Tests fehlgeschlagen (kann ignoriert werden)"
 # 8. Installation (WARNUNG: Überschreibt Standard-Python!)
 echo "8. Installation wird durchgeführt..."
 echo "WARNUNG: Dies überschreibt die Standard-Python-Installation!"
-read -p "Möchten Sie fortfahren? (y/N): " confirm
+
+if [[ "${OPENWB_VENV_NONINTERACTIVE:-0}" = "1" ]]; then
+    confirm="y"
+else
+    read -p "Möchten Sie fortfahren? (y/N): " confirm
+fi
+
 if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
     sudo make install
-    
+
     # 9. ldconfig ausführen für shared libraries
     echo "9. Shared libraries werden aktualisiert..."
     sudo ldconfig
-    
+
     # 10. Symbolische Links erstellen
     echo "10. Symbolische Links werden erstellt..."
     sudo ln -sf /usr/local/bin/python3 /usr/local/bin/python
     sudo ln -sf /usr/local/bin/pip3 /usr/local/bin/pip
-    
+
     echo "Erstellte Links:"
     ls -la /usr/local/bin/python*
     ls -la /usr/local/bin/pip*
-    
+
     # 11. Neue Python-Version testen
     echo "11. Installation wird getestet..."
     python3 --version
@@ -265,29 +351,30 @@ if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
     pip3 --version
     pip --version
     python3 -c "import sys; print(sys.version)"
-    
-    # 12. rpi-lgpio Paket installieren
+
+    # 12. rpi-lgpio Paket installieren (nutzt frisch gebautes Python 3.9, kein PEP668-Problem)
     echo "12. rpi-lgpio Paket wird installiert..."
-    pip3 install rpi-lgpio
-    
+    /usr/local/bin/pip3 install rpi-lgpio
+
     echo "=== Installation abgeschlossen ==="
     echo "Python 3.9.23 ist jetzt als Standard-Python installiert"
     echo "Verfügbare Befehle: python, python3, pip, pip3"
     echo "rpi-lgpio wurde installiert"
-    
-    # 13. PHP Upload-Limits konfigurieren
+
+    # 13. PHP Upload-Limits konfigurieren (PHP-Version dynamisch ermitteln)
     echo "13. PHP Upload-Limits werden konfiguriert..."
-    sudo mkdir -p /etc/php/8.4/apache2/conf.d/
-    echo "upload_max_filesize = 300M" | sudo tee /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
-    echo "post_max_size = 300M" | sudo tee -a /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini > /dev/null
-    
+    PHP_VER=$(detect_php_version)
+    echo "Erkannte PHP-Version: $PHP_VER"
+    sudo mkdir -p "/etc/php/$PHP_VER/apache2/conf.d/"
+    printf 'upload_max_filesize = 300M\npost_max_size = 300M\n' | sudo tee "/etc/php/$PHP_VER/apache2/conf.d/20-uploadlimit.ini" > /dev/null
+
     echo "PHP Upload-Limits auf 300M gesetzt:"
-    cat /etc/php/8.4/apache2/conf.d/20-uploadlimit.ini
-    
+    cat "/etc/php/$PHP_VER/apache2/conf.d/20-uploadlimit.ini"
+
     # Apache neu starten für PHP-Änderungen
     echo "Apache wird neu gestartet..."
     sudo systemctl restart apache2
-    
+
     echo "=== Vollständige Installation beendet ==="
     echo "HINWEIS: Ein Neustart ist erforderlich, damit die OpenWB GPIO-Konfiguration wirksam wird!"
 else
@@ -322,79 +409,85 @@ if [ "$INSTALL_VENV" = true ]; then
         echo "FEHLER: setup_venv.sh nicht gefunden: $VENV_SETUP"
         echo "venv-Setup wird übersprungen"
         exit 1
-    else
-        echo "Führe venv-Setup aus..."
-        chmod +x "$VENV_SETUP"
-        if OPENWB_VENV_NONINTERACTIVE=1 bash "$VENV_SETUP"; then
-            echo "✓ Virtual Environment erfolgreich eingerichtet"
-            echo ""
+    fi
 
-            # Automatische Post-Update Hook Installation
-            echo "=== Post-Update Hook Installation ==="
-            if [ -f "$POST_UPDATE_HOOK" ]; then
-                # Versuche Hook zu installieren (wird nur funktionieren, wenn OpenWB installiert ist)
-                OPENWB_DIRS=(
-                    "/var/www/html/openWB"
-                    "/home/openwb/openWB"
-                    "/opt/openWB"
-                )
+    echo "Führe venv-Setup aus..."
+    chmod +x "$VENV_SETUP"
+    if OPENWB_VENV_NONINTERACTIVE=1 bash "$VENV_SETUP"; then
+        echo "✓ Virtual Environment erfolgreich eingerichtet"
+        echo ""
 
-                HOOK_INSTALLED=false
-                for openwb_dir in "${OPENWB_DIRS[@]}"; do
-                    if [ -d "$openwb_dir" ]; then
-                        echo "OpenWB gefunden in: $openwb_dir"
-
-                        # Erstelle config-Verzeichnis falls nicht vorhanden
-                        sudo mkdir -p "$openwb_dir/data/config" 2>/dev/null || true
-
-                        # Kopiere Hook
-                        if sudo cp "$POST_UPDATE_HOOK" "$openwb_dir/data/config/post-update.sh" 2>/dev/null; then
-                            sudo chmod +x "$openwb_dir/data/config/post-update.sh"
-                            echo "✓ Post-Update Hook installiert: $openwb_dir/data/config/post-update.sh"
-                            HOOK_INSTALLED=true
-                            break
-                        fi
-                    fi
-                done
-
-                if [ "$HOOK_INSTALLED" = false ]; then
-                    echo "⚠ OpenWB noch nicht installiert"
-                    echo "  Hook wird später automatisch installiert"
-                    echo "  Oder manuell nach OpenWB-Installation:"
-                    echo "  sudo cp $POST_UPDATE_HOOK /var/www/html/openWB/data/config/post-update.sh"
-                    echo "  sudo chmod +x /var/www/html/openWB/data/config/post-update.sh"
-                fi
-            else
-                echo "⚠ Post-Update Hook nicht gefunden: $POST_UPDATE_HOOK"
+        # OpenWB Runtime auf venv umstellen (PEP668-Fix für atreboot.sh und Services)
+        echo "=== OpenWB Runtime auf venv umstellen ==="
+        OPENWB_RUNTIME_PATCHED=false
+        for openwb_dir in "/var/www/html/openWB" "/home/openwb/openWB" "/home/openwb/openwb" "/opt/openWB"; do
+            if [ -d "$openwb_dir" ]; then
+                configure_openwb_venv_runtime "$openwb_dir"
+                OPENWB_RUNTIME_PATCHED=true
+                break
             fi
-
-            echo ""
-            echo "====================================================================="
-            echo "   Installation abgeschlossen!"
-            echo "====================================================================="
-            echo ""
-            echo "Python-Version im venv:"
-            source /opt/openwb-venv/bin/activate
-            python --version
-            deactivate
-            echo ""
-            echo "Verwendung:"
-            echo "  1. Aktivieren: source /opt/openwb-venv/bin/activate"
-            echo "  2. Wrapper: openwb-activate python script.py"
-            echo "  3. Update: $0 --venv-only"
-            echo ""
-            echo "Vorteile:"
-            echo "  ✓ Keine Python-Kompilierung (30-60 Min gespart!)"
-            echo "  ✓ Nutzt modernes System-Python"
-            echo "  ✓ Überlebt OpenWB-Updates automatisch"
-            echo "  ✓ Post-Update Hook installiert (automatische Updates)"
-            echo ""
-        else
-            echo "✗ Fehler beim venv-Setup"
-            echo "  Prüfe die Ausgabe oberhalb (klarer Fehlerhinweis durch setup_venv.sh)."
-            echo "  Kurztest: OPENWB_VENV_NONINTERACTIVE=1 ./setup_venv.sh --update"
-            exit 1
+        done
+        if [ "$OPENWB_RUNTIME_PATCHED" = false ]; then
+            echo "⚠ OpenWB noch nicht installiert - Runtime-Patch wird nach OpenWB-Installation nötig"
+            echo "  Führe nach der OpenWB-Installation aus:"
+            echo "  OPENWB_VENV_NONINTERACTIVE=1 ./install_python3.9.sh --venv-only"
         fi
+        echo ""
+
+        # Post-Update Hook Installation
+        echo "=== Post-Update Hook Installation ==="
+        if [ -f "$POST_UPDATE_HOOK" ]; then
+            HOOK_INSTALLED=false
+            for openwb_dir in "/var/www/html/openWB" "/home/openwb/openWB" "/opt/openWB"; do
+                if [ -d "$openwb_dir" ]; then
+                    echo "OpenWB gefunden in: $openwb_dir"
+                    sudo mkdir -p "$openwb_dir/data/config" 2>/dev/null || true
+                    if sudo cp "$POST_UPDATE_HOOK" "$openwb_dir/data/config/post-update.sh" 2>/dev/null; then
+                        sudo chmod +x "$openwb_dir/data/config/post-update.sh"
+                        echo "✓ Post-Update Hook installiert: $openwb_dir/data/config/post-update.sh"
+                        HOOK_INSTALLED=true
+                        break
+                    fi
+                fi
+            done
+
+            if [ "$HOOK_INSTALLED" = false ]; then
+                echo "⚠ OpenWB noch nicht installiert"
+                echo "  Hook wird später automatisch installiert"
+                echo "  Oder manuell nach OpenWB-Installation:"
+                echo "  sudo cp $POST_UPDATE_HOOK /var/www/html/openWB/data/config/post-update.sh"
+                echo "  sudo chmod +x /var/www/html/openWB/data/config/post-update.sh"
+            fi
+        else
+            echo "⚠ Post-Update Hook nicht gefunden: $POST_UPDATE_HOOK"
+        fi
+
+        echo ""
+        echo "====================================================================="
+        echo "   Installation abgeschlossen!"
+        echo "====================================================================="
+        echo ""
+        echo "Python-Version im venv:"
+        source /opt/openwb-venv/bin/activate
+        python --version
+        deactivate
+        echo ""
+        echo "Verwendung:"
+        echo "  1. Aktivieren: source /opt/openwb-venv/bin/activate"
+        echo "  2. Wrapper: openwb-activate python script.py"
+        echo "  3. Update: $0 --venv-only"
+        echo ""
+        echo "Vorteile:"
+        echo "  ✓ Keine Python-Kompilierung (30-60 Min gespart!)"
+        echo "  ✓ Nutzt modernes System-Python"
+        echo "  ✓ Überlebt OpenWB-Updates automatisch"
+        echo "  ✓ Post-Update Hook installiert (automatische Updates)"
+        echo ""
+    else
+        echo "✗ Fehler beim venv-Setup"
+        echo "  Prüfe die Ausgabe oberhalb (klarer Fehlerhinweis durch setup_venv.sh)."
+        echo "  Kurztest: OPENWB_VENV_NONINTERACTIVE=1 ./setup_venv.sh --update"
+        exit 1
     fi
 fi
 
