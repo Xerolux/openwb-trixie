@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="0a7df47"
+BUILD_ID="81cb302"
 
 # ============================================================================
 # Argumente parsen
@@ -103,6 +103,7 @@ if _src_dir="$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" && _tgt="$(cd "$_src_di
 else
     SCRIPT_DIR="$HOME"
 fi
+REPO_DIR="/home/$OPENWB_USER/openwb-trixie"
 OPENWB_TRIXIE_URL="${OPENWB_TRIXIE_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh}"
 
 # ============================================================================
@@ -982,6 +983,7 @@ whiptail_main_menu() {
 
     local sel
     sel=$(whiptail --title "OpenWB · Debian Trixie Installer v${INSTALLER_VERSION}" \
+        --cancel-button "Beenden" \
         --menu "\nWas möchtest du tun?\n\nBuild: ${BUILD_ID}" 22 72 6 \
         "1" "System-Python + venv        EMPFOHLEN (Python ${sys_py})" \
         "2" "Python 3.9.25 kompilieren    ORIGINAL (30-60 Min)" \
@@ -993,7 +995,7 @@ whiptail_main_menu() {
         3>&1 1>&2 2>&3)
 
     local rc=$?
-    [ $rc -ne 0 ] && echo "5" && return
+    [ $rc -ne 0 ] && echo "quit" && return
 
     case "$sel" in
         1)  echo "venv" ;;
@@ -1088,6 +1090,7 @@ whiptail_patches_menu() {
 
     local selected
     selected=$(whiptail --title "Feature-Patches (update-sicher)" \
+        --cancel-button "Zurück" \
         --checklist "\nLeere Checkbox = nicht installiert\nGefüllte Checkbox = INSTALLED\n\nAuswählen zum Installieren/Entfernen:" \
         22 78 ${#patch_files[@]} \
         "${args[@]}" \
@@ -1322,6 +1325,7 @@ whiptail_tools_menu() {
 
     local selected
     selected=$(whiptail --title "Tools installieren / entfernen" \
+        --cancel-button "Zurück" \
         --checklist "\n[*] = installiert    [ ] = verfügbar\n\nLeertaste zum Auswählen, OK zum Anwenden:" \
         22 78 ${#tool_files[@]} \
         "${args[@]}" \
@@ -1364,35 +1368,6 @@ whiptail_tools_menu() {
     done
 
     whiptail --title "Fertig" --msgbox "Tool-Änderungen angewendet." 8 40
-}
-
-do_tools_mode() {
-    if [ ! -d "$OPENWB_DIR" ]; then
-        whiptail --title "Fehler" --msgbox "OpenWB ist noch nicht installiert!\nBitte zuerst Option 1, 2 oder 3 ausführen." 10 55
-        return 1
-    fi
-
-    run_as_openwb_user
-
-    if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
-        cd "/home/$OPENWB_USER/openwb-trixie"
-        TOOLS_SRC_DIR="$(pwd)"
-    elif [ -d "$SCRIPT_DIR/tools" ]; then
-        TOOLS_SRC_DIR="$SCRIPT_DIR"
-    else
-        log "Klone Repository für Tools..."
-        cd "/home/$OPENWB_USER"
-        git clone https://github.com/Xerolux/openwb-trixie.git
-        cd openwb-trixie
-        TOOLS_SRC_DIR="$(pwd)"
-    fi
-
-    if [ ! -d "$TOOLS_SRC_DIR/tools" ]; then
-        whiptail --title "Fehler" --msgbox "tools/ nicht gefunden in $TOOLS_SRC_DIR" 10 50
-        return 1
-    fi
-
-    whiptail_tools_menu
 }
 
 # ============================================================================
@@ -1502,6 +1477,23 @@ do_patches_mode() {
     echo ""
 }
 
+ensure_repo() {
+    if [ -d "$SCRIPT_DIR/patches" ] && [ -d "$SCRIPT_DIR/tools" ]; then
+        REPO_DIR="$SCRIPT_DIR"
+        return 0
+    fi
+
+    if [ -d "$REPO_DIR" ]; then
+        cd "$REPO_DIR"
+        git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
+        return 0
+    fi
+
+    log "Bereite Repository vor..."
+    mkdir -p "/home/$OPENWB_USER"
+    git clone https://github.com/Xerolux/openwb-trixie.git "$REPO_DIR" 2>/dev/null || true
+}
+
 main() {
     if ! is_trixie; then
         log_error "Dies ist KEIN Debian Trixie System!"
@@ -1516,6 +1508,9 @@ main() {
 
     log_success "Debian Trixie erkannt ($(cat /etc/debian_version 2>/dev/null || echo "?"))"
     log "Architektur: $(uname -m)$(is_raspberry_pi && echo ' (Raspberry Pi)' || true)"
+
+    # Repository bereitstellen (fuer Patches + Tools)
+    ensure_repo
 
     while [ -z "$MODE" ]; do
         local choice=""
@@ -1545,21 +1540,7 @@ main() {
 
                 run_as_openwb_user
 
-                if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
-                    cd "/home/$OPENWB_USER/openwb-trixie"
-                    log "Aktualisiere Repository..."
-                    git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
-                    PATCHES_SRC_DIR="$(pwd)"
-                elif [ -d "$SCRIPT_DIR/patches" ]; then
-                    PATCHES_SRC_DIR="$SCRIPT_DIR"
-                else
-                    log "Klone Repository für Patch-Dateien..."
-                    cd "/home/$OPENWB_USER"
-                    git clone https://github.com/Xerolux/openwb-trixie.git
-                    cd openwb-trixie
-                    PATCHES_SRC_DIR="$(pwd)"
-                fi
-
+                PATCHES_SRC_DIR="$REPO_DIR"
                 patches_apply_enabled
                 if [ $USE_WHIPTAIL -eq 0 ]; then
                     whiptail_patches_menu
@@ -1569,7 +1550,18 @@ main() {
                 continue
                 ;;
             tools)
-                do_tools_mode
+                if [ ! -d "$OPENWB_DIR" ]; then
+                    if [ $USE_WHIPTAIL -eq 0 ]; then
+                        whiptail --title "Fehler" --msgbox "OpenWB ist noch nicht installiert!\nBitte zuerst Option 1, 2 oder 3 ausführen." 10 55
+                    else
+                        log_error "OpenWB ist noch nicht installiert!"
+                    fi
+                    continue
+                fi
+
+                run_as_openwb_user
+                TOOLS_SRC_DIR="$REPO_DIR"
+                whiptail_tools_menu
                 continue
                 ;;
         esac
