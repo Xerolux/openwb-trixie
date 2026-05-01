@@ -69,6 +69,51 @@ log_error() {
 VENV_DIR="/opt/openwb-venv"
 SETUP_SCRIPT="/home/openwb/openwb-trixie/setup_venv.sh"
 REQUIREMENTS_FILE="/home/openwb/openwb-trixie/requirements.txt"
+OPENWB_DIR="/var/www/html/openWB"
+
+reapply_openwb_patches() {
+    log "Setze update-feste OpenWB-Patches erneut..."
+
+    if [ -f "$OPENWB_DIR/requirements.txt" ]; then
+        sed -E -i \
+            -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]*)$/# jq entfernt auf Python 3.13 (System-jq via apt)\1/' \
+            -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
+            -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
+            "$OPENWB_DIR/requirements.txt"
+    fi
+
+    if [ -f "$OPENWB_DIR/runs/atreboot.sh" ]; then
+        sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$OPENWB_DIR/runs/atreboot.sh"
+        chmod +x "$OPENWB_DIR/runs/atreboot.sh"
+    fi
+
+    if [ -f "$OPENWB_DIR/data/config/openwb-simpleAPI.service" ]; then
+        sed -i -E 's@^ExecStart=.*simpleAPI_mqtt\.py$@ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py@g' "$OPENWB_DIR/data/config/openwb-simpleAPI.service"
+        ln -sfn "$OPENWB_DIR/data/config/openwb-simpleAPI.service" /etc/systemd/system/openwb-simpleAPI.service
+    fi
+
+    if [ -f "/etc/init.d/mosquitto_local" ] && [ ! -f "/etc/systemd/system/mosquitto_local.service" ]; then
+        cat > /etc/systemd/system/mosquitto_local.service <<'EOF'
+[Unit]
+Description=Mosquitto Local Instance (openWB)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+ExecStart=/etc/init.d/mosquitto_local start
+ExecStop=/etc/init.d/mosquitto_local stop
+ExecReload=/etc/init.d/mosquitto_local restart
+TimeoutSec=60
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl enable mosquitto_local >/dev/null 2>&1 || true
+    fi
+}
 
 install_system_rpilgpio() {
     if [ ! -f "$REQUIREMENTS_FILE" ]; then
@@ -158,6 +203,8 @@ else
         exit 1
     fi
 fi
+
+reapply_openwb_patches
 
 # Optional: Prüfe OpenWB-Services und starte neu
 if command -v systemctl &> /dev/null; then
