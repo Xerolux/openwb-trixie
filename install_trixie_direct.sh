@@ -96,6 +96,25 @@ ensure_openwb_user() {
     fi
 }
 
+ensure_openwb_password_for_sudo() {
+    if sudo -H -u "$OPENWB_USER" sudo -n true >/dev/null 2>&1; then
+        log "Sudo für '$OPENWB_USER' funktioniert bereits ohne Passwortabfrage"
+        return 0
+    fi
+
+    if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+        log_error "Kein interaktives Terminal gefunden."
+        log_error "Bitte setze manuell ein Passwort: sudo passwd $OPENWB_USER"
+        exit 1
+    fi
+
+    echo ""
+    log_warning "Bitte jetzt ein Passwort für den Benutzer '$OPENWB_USER' vergeben."
+    log "Eingabe startet mit: sudo passwd $OPENWB_USER"
+    sudo passwd "$OPENWB_USER" < /dev/tty
+    log_success "Passwort für '$OPENWB_USER' wurde gesetzt"
+}
+
 switch_to_openwb_if_needed() {
     if [ "${OPENWB_RUN_AS_USER:-0}" = "1" ]; then
         return 0
@@ -107,6 +126,8 @@ switch_to_openwb_if_needed() {
         export OPENWB_RUN_AS_USER=1
         return 0
     fi
+
+    ensure_openwb_password_for_sudo
 
     log "Starte Installer als Benutzer '$OPENWB_USER' neu..."
     if [ -f "$0" ] && [ -r "$0" ]; then
