@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="32c6086"
+BUILD_ID="27e1f80"
 
 # ============================================================================
 # Argumente parsen
@@ -949,11 +949,173 @@ patches_apply_enabled() {
     done < "$PATCH_CONF"
 }
 
-patches_menu() {
+ensure_whiptail() {
+    if ! test -t 0 2>/dev/null || ! test -t 1 2>/dev/null; then
+        return 1
+    fi
+    if command -v whiptail >/dev/null 2>&1; then
+        return 0
+    fi
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y whiptail 2>/dev/null
+    command -v whiptail >/dev/null 2>&1
+}
+
+whiptail_main_menu() {
+    local sys_py
+    sys_py=$(python3 --version 2>&1 | awk '{print $2}')
+
+    local sel
+    sel=$(whiptail --title "OpenWB · Debian Trixie Installer v${INSTALLER_VERSION}" \
+        --menu "\nWas möchtest du tun?\n\nBuild: ${BUILD_ID}" 22 72 6 \
+        "1" "System-Python + venv        EMPFOHLEN (Python ${sys_py})" \
+        "2" "Python 3.9.25 kompilieren    ORIGINAL (30-60 Min)" \
+        "3" "Python 3.14.4 + venv         NEUESTE (30-60 Min)" \
+        "4" "Feature-Patches verwalten    installieren / entfernen" \
+        ""  "" \
+        "5" "Beenden" \
+        3>&1 1>&2 2>&3)
+
+    local rc=$?
+    [ $rc -ne 0 ] && echo "5" && return
+
+    case "$sel" in
+        1)  echo "venv" ;;
+        2)  echo "python39" ;;
+        3)  echo "python314" ;;
+        4)  echo "patches" ;;
+        5)  echo "quit" ;;
+        "") echo "venv" ;;
+        *)  echo "quit" ;;
+    esac
+}
+
+text_main_menu() {
+    local sys_py
+    sys_py=$(python3 --version 2>&1 | awk '{print $2}')
+
+    echo ""
+    echo "  ┌──────────────────────────────────────────────────────────┐"
+    echo "  │              Was möchtest du tun?                        │"
+    echo "  ├──────────────────────────────────────────────────────────┤"
+    echo "  │                                                          │"
+    echo "  │   [1]  System-Python + venv              EMPFOHLEN      │"
+    echo "  │        Python ${sys_py} · Pakete isoliert im venv              │"
+    echo "  │        Dauer: ca. 10-15 Minuten                          │"
+    echo "  │                                                          │"
+    echo "  │   [2]  Python 3.9.25 kompilieren          ORIGINAL       │"
+    echo "  │        Kompiliert aus Quellcode, ersetzt System-Python   │"
+    echo "  │        Dauer: ca. 30-60 Minuten                          │"
+    echo "  │                                                          │"
+    echo "  │   [3]  Python 3.14.4 kompilieren + venv   NEUESTE        │"
+    echo "  │        Neuestes Python als Zusatz-Installation           │"
+    echo "  │        Dauer: ca. 30-60 Minuten                          │"
+    echo "  │                                                          │"
+    echo "  │   [4]  Feature-Patches verwalten                         │"
+    echo "  │        Patches installieren / entfernen                  │"
+    echo "  │                                                          │"
+    echo "  │   [5]  Beenden                            build:${BUILD_ID} │"
+    echo "  │                                                          │"
+    echo "  └──────────────────────────────────────────────────────────┘"
+    echo ""
+
+    while true; do
+        read -p "  Deine Wahl [1/2/3/4/5]: " -n 1 -r < /dev/tty
+        echo
+        case "$REPLY" in
+            1|"") echo "venv"; return ;;
+            2)    echo "python39"; return ;;
+            3)    echo "python314"; return ;;
+            4)    echo "patches"; return ;;
+            5|q|Q) echo "quit"; return ;;
+            *)    echo "  Bitte 1-5 eingeben" ;;
+        esac
+    done
+}
+
+whiptail_patches_menu() {
     if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
+        whiptail --title "Fehler" --msgbox "patches/ Verzeichnis nicht gefunden.\nBitte Repository aktualisieren." 10 50
+        return 1
+    fi
+
+    patches_load_enabled
+
+    local args=()
+    local patch_files=()
+
+    while IFS= read -r pfile; do
+        [ -z "$pfile" ] && continue
+        local full="$PATCHES_SRC_DIR/patches/$pfile"
+        local pid name desc
+        pid=$(patch_get_field "$full" "Id")
+        name=$(patch_get_field "$full" "Name")
+        desc=$(patch_get_field "$full" "Desc")
+        [ -z "$pid" ] && continue
+
+        patch_files+=("$pid")
+        if patch_is_enabled "$pid"; then
+            args+=("$pid" "$name — $desc" "ON")
+        else
+            args+=("$pid" "$name — $desc" "OFF")
+        fi
+    done <<< "$(patches_discover "$PATCHES_SRC_DIR/patches")"
+
+    if [ ${#args[@]} -eq 0 ]; then
+        whiptail --title "Feature-Patches" --msgbox "Keine Patches verfügbar." 10 50
         return 0
     fi
 
+    local selected
+    selected=$(whiptail --title "Feature-Patches (update-sicher)" \
+        --checklist "\nLeere Checkbox = nicht installiert\nGefüllte Checkbox = INSTALLED\n\nAuswählen zum Installieren/Entfernen:" \
+        22 78 ${#patch_files[@]} \
+        "${args[@]}" \
+        3>&1 1>&2 2>&3)
+
+    local rc=$?
+    [ $rc -ne 0 ] && return 0
+
+    # selected enthält IDs in Anführungszeichen, z.B.: "force-secondary-update" "no-reboot-on-update"
+    local sel_pids=()
+    eval 'for w in '$selected'; do sel_pids+=("$w"); done'
+
+    # Patches die aktiviert waren aber nicht mehr ausgewählt sind → entfernen
+    for pid in "${patch_files[@]}"; do
+        local is_sel=false
+        for sp in "${sel_pids[@]}"; do
+            [ "$pid" = "$sp" ] && is_sel=true && break
+        done
+
+        local pfile=""
+        for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+            [ -f "$f" ] || continue
+            if [ "$(patch_get_field "$f" "Id")" = "$pid" ]; then
+                pfile="$f"
+                break
+            fi
+        done
+        [ -z "$pfile" ] && continue
+
+        export OPENWB_DIR VENV_DIR
+        source "$pfile"
+
+        if [ "$is_sel" = true ] && ! patch_is_enabled "$pid"; then
+            # Installieren
+            if patch_apply; then
+                patch_enable "$pid"
+            fi
+        elif [ "$is_sel" = false ] && patch_is_enabled "$pid"; then
+            # Entfernen
+            if patch_revert; then
+                patch_disable "$pid"
+            fi
+        fi
+    done
+
+    whiptail --title "Fertig" --msgbox "Patch-Änderungen angewendet.\nAktivierte Patches werden nach OpenWB-Updates automatisch reapplied." 10 60
+}
+
+patches_menu() {
     local available
     available=$(patches_discover "$PATCHES_SRC_DIR/patches")
     [ -n "$available" ] || return 0
@@ -1164,25 +1326,6 @@ do_patches_mode() {
 }
 
 main() {
-    local BOLD='\033[1m'
-    local DIM='\033[2m'
-    local W='\033[0m'       # White/Reset
-    local GR='\033[0;32m'   # Green
-    local BG='\033[1;32m'   # Bold Green
-    local CY='\033[0;36m'   # Cyan
-    local BY='\033[1;33m'   # Bold Yellow
-    local YB='\033[43;1;30m' # Yellow bg, Black text
-    local BB='\033[1;34m'   # Bold Blue
-
-    echo ""
-    echo -e "  ${BB}╔═══════════════════════════════════════════════════════════╗${W}"
-    echo -e "  ${BB}║${W}                                                           ${BB}║${W}"
-    echo -e "  ${BB}║${W}        ${BOLD}OpenWB  ·  Debian Trixie Installer${W}                ${BB}║${W}"
-    echo -e "  ${BB}║${W}                 ${DIM}v${INSTALLER_VERSION}${W}                              ${BB}║${W}"
-    echo -e "  ${BB}║${W}                                                           ${BB}║${W}"
-    echo -e "  ${BB}╚═══════════════════════════════════════════════════════════╝${W}"
-    echo ""
-
     if ! is_trixie; then
         log_error "Dies ist KEIN Debian Trixie System!"
         log_error "Bitte zuerst Debian Trixie installieren."
@@ -1190,71 +1333,65 @@ main() {
         echo "Download: https://www.debian.org/devel/"
         exit 1
     fi
-    log_success "Debian Trixie erkannt (${BOLD}$(cat /etc/debian_version 2>/dev/null || echo "?")${W})"
-    log "Architektur: ${BOLD}$(uname -m)${W}$(is_raspberry_pi && echo " ${GR}(Raspberry Pi)${W}" || true)"
+
+    ensure_whiptail
+    local USE_WHIPTAIL=$?
+
+    log_success "Debian Trixie erkannt ($(cat /etc/debian_version 2>/dev/null || echo "?"))"
+    log "Architektur: $(uname -m)$(is_raspberry_pi && echo ' (Raspberry Pi)' || true)"
 
     while [ -z "$MODE" ]; do
-        local sys_py
-        sys_py=$(python3 --version 2>&1 | awk '{print $2}')
-
-        echo ""
-        echo -e "  ${BB}┌──────────────────────────────────────────────────────────┐${W}"
-        echo -e "  ${BB}│${W}              ${BOLD}Was möchtest du tun?${W}                                ${BB}│${W}"
-        echo -e "  ${BB}├──────────────────────────────────────────────────────────┤${W}"
-        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${BY} [1]${W}  ${BOLD}System-Python + venv${W}                   ${BG}EMPFOHLEN${W}   ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${CY}Python ${sys_py}${W} · Pakete isoliert im venv               ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${GR}System bleibt unangetastet${W}                              ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 10-15 Minuten${W}                               ${BB}│${W}"
-        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${BY} [2]${W}  ${BOLD}Python 3.9.25 kompilieren${W}               ${YB}ORIGINAL${W}    ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${CY}Kompiliert aus Quellcode${W}                                ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${RED}Ersetzt System-Python!${W} · Keine Code-Patches nötig       ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 30-60 Minuten${W}                               ${BB}│${W}"
-        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${BY} [3]${W}  ${BOLD}Python 3.14.4 kompilieren + venv${W}        ${CY}NEUESTE${W}     ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${CY}Neuestes Python als Zusatz-Installation${W}                 ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${GR}System-Python bleibt unverändert${W}                        ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 30-60 Minuten${W}                               ${BB}│${W}"
-        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${BY} [4]${W}  ${BOLD}Feature-Patches verwalten${W}                             ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${DIM}Patches installieren / entfernen${W}                       ${BB}│${W}"
-        echo -e "  ${BB}│${W}      ${DIM}(OpenWB muss bereits installiert sein)${W}                ${BB}│${W}"
-        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${DIM} [5]  Beenden${W}                              ${DIM}build:${BUILD_ID}${W} ${BB}│${W}"
-        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
-        echo ""
-
-        while true; do
-            echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}/${BY}4${W}/${DIM}5${W}]: "
-            read -n 1 -r < /dev/tty
-            echo
-            case "$REPLY" in
-                1|"") MODE="venv";      break ;;
-                2)    MODE="python39";   break ;;
-                3)    MODE="python314";  break ;;
-                4)    MODE="patches";    break ;;
-                5|q|Q) echo -e "  ${DIM}Tschüss!${W}"; exit 0 ;;
-                *)    echo -e "  ${RED}Bitte 1-5 eingeben${W}" ;;
-            esac
-        done
-
-        echo ""
-        case "$MODE" in
-            venv)       echo -e "  ${BG}Ausgewählt: Option 1 — System-Python + venv${W}" ;;
-            python39)   echo -e "  ${BY}Ausgewählt: Option 2 — Python 3.9.25 kompilieren (original-getreu)${W}" ;;
-            python314)  echo -e "  ${CY}Ausgewählt: Option 3 — Python 3.14.4 kompilieren + venv${W}" ;;
-            patches)    echo -e "  ${BY}Ausgewählt: Option 4 — Feature-Patches verwalten${W}" ;;
-        esac
-        echo ""
-
-        if [ "$MODE" = "patches" ]; then
-            do_patches_mode
-            MODE=""
+        local choice=""
+        if [ $USE_WHIPTAIL -eq 0 ]; then
+            choice=$(whiptail_main_menu)
         else
-            break
+            choice=$(text_main_menu)
         fi
+
+        case "$choice" in
+            quit) echo "Tschüss!"; exit 0 ;;
+            venv|python39|python314) MODE="$choice" ;;
+            patches)
+                if [ ! -d "$OPENWB_DIR" ]; then
+                    if [ $USE_WHIPTAIL -eq 0 ]; then
+                        whiptail --title "Fehler" --msgbox "OpenWB ist noch nicht installiert!\nBitte zuerst Option 1, 2 oder 3 ausführen." 10 55
+                    else
+                        log_error "OpenWB ist noch nicht installiert!"
+                    fi
+                    continue
+                fi
+
+                mkdir -p "$PATCH_DIR"
+                chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
+                touch "$PATCH_CONF" 2>/dev/null || true
+                chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
+
+                run_as_openwb_user
+
+                if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
+                    cd "/home/$OPENWB_USER/openwb-trixie"
+                    log "Aktualisiere Repository..."
+                    git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
+                    PATCHES_SRC_DIR="$(pwd)"
+                elif [ -d "$SCRIPT_DIR/patches" ]; then
+                    PATCHES_SRC_DIR="$SCRIPT_DIR"
+                else
+                    log "Klone Repository für Patch-Dateien..."
+                    cd "/home/$OPENWB_USER"
+                    git clone https://github.com/Xerolux/openwb-trixie.git
+                    cd openwb-trixie
+                    PATCHES_SRC_DIR="$(pwd)"
+                fi
+
+                patches_apply_enabled
+                if [ $USE_WHIPTAIL -eq 0 ]; then
+                    whiptail_patches_menu
+                else
+                    patches_menu
+                fi
+                continue
+                ;;
+        esac
     done
 
     if [ "$MODE" = "patches" ]; then
