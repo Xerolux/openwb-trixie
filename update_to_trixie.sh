@@ -44,7 +44,7 @@ echo "Stelle sicher, dass du ein vollständiges System-Backup hast."
 echo ""
 read -p "Möchtest du fortfahren? (j/N): " -n 1 -r
 echo
-if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
     echo "Update abgebrochen."
     exit 1
 fi

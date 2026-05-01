@@ -108,7 +108,7 @@ create_venv() {
         else
             read -p "Möchtest du es neu erstellen? (j/N): " -n 1 -r
             echo
-            if [[ $REPLY =~ ^[Jj]$ ]]; then
+            if [[ "$REPLY" =~ ^[Jj]$ ]]; then
                 log_warning "Lösche existierendes venv..."
                 sudo rm -rf "$VENV_DIR"
             else
@@ -347,8 +347,8 @@ create_systemd_helper() {
 # [Service]
 # EnvironmentFile=/opt/openwb-venv/systemd-environment
 
-PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin
-VIRTUAL_ENV=$VENV_DIR
+PATH="$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+VIRTUAL_ENV="$VENV_DIR"
 PYTHONHOME=
 EOF
 

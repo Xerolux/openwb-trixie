@@ -113,7 +113,9 @@ configure_openwb_venv_runtime() {
     # Services stoppen vor dem Patchen (verhindert Race Conditions)
     for svc in openwb2 openwb; do
         if systemctl is-active "$svc" &>/dev/null; then
-            sudo systemctl stop "$svc" && echo "  Gestoppt: $svc"
+            sudo systemctl stop "$svc" \
+                && echo "  Gestoppt: $svc" \
+                || echo "  ⚠ Konnte $svc nicht stoppen (wird ignoriert)"
         fi
     done
 
@@ -141,7 +143,9 @@ configure_openwb_venv_runtime() {
     # Services neu starten nach dem Patchen
     for svc in openwb2 openwb; do
         if systemctl is-enabled "$svc" &>/dev/null; then
-            sudo systemctl restart "$svc" && echo "  ✓ Neugestartet: $svc"
+            sudo systemctl restart "$svc" \
+                && echo "  ✓ Neugestartet: $svc" \
+                || echo "  ⚠ Konnte $svc nicht neustarten"
         fi
     done
 
@@ -168,7 +172,7 @@ else
     if [[ "${OPENWB_VENV_NONINTERACTIVE:-0}" != "1" ]]; then
         read -p "Möchtest du stattdessen --with-venv nutzen? (empfohlen) (j/N): " -n 1 -r
         echo
-        if [[ $REPLY =~ ^[Jj]$ ]]; then
+        if [[ "$REPLY" =~ ^[Jj]$ ]]; then
             echo "Starte mit --with-venv..."
             INSTALL_VENV=true
             VENV_ONLY=true
@@ -295,6 +299,7 @@ echo "5. Python wird konfiguriert..."
 # 6. Kompilierung (begrenzte Parallelität für weniger RAM-Verbrauch)
 echo "6. Kompilierung startet... (Das kann einige Zeit dauern)"
 available_ram=$(free -g | awk 'NR==2{print $7}')
+available_ram=${available_ram:-0}
 cpu_cores=$(nproc)
 
 if [ "$available_ram" -lt 2 ]; then

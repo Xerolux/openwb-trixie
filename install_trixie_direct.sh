@@ -107,7 +107,9 @@ configure_openwb_venv_runtime() {
     # Services stoppen vor dem Patchen (verhindert Race Conditions)
     for svc in openwb2 openwb; do
         if systemctl is-active "$svc" &>/dev/null; then
-            sudo systemctl stop "$svc" && log "Gestoppt: $svc"
+            sudo systemctl stop "$svc" \
+                && log "Gestoppt: $svc" \
+                || log_warning "Konnte $svc nicht stoppen (wird ignoriert)"
         fi
     done
 
@@ -135,7 +137,9 @@ configure_openwb_venv_runtime() {
     # Services neu starten nach dem Patchen
     for svc in openwb2 openwb; do
         if systemctl is-enabled "$svc" &>/dev/null; then
-            sudo systemctl restart "$svc" && log_success "Neugestartet: $svc"
+            sudo systemctl restart "$svc" \
+                && log_success "Neugestartet: $svc" \
+                || log_warning "Konnte $svc nicht neustarten"
         fi
     done
 
@@ -213,7 +217,7 @@ log_success "Debian Trixie erkannt"
 
 read -p "Möchtest du fortfahren? (j/N): " -n 1 -r
 echo
-if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
     echo "Installation abgebrochen."
     exit 1
 fi
@@ -438,6 +442,6 @@ show_service_status
 log_warning "Ein Neustart wird empfohlen für GPIO-Konfiguration!"
 read -p "Jetzt neustarten? (j/N): " -n 1 -r
 echo
-if [[ $REPLY =~ ^[Jj]$ ]]; then
+if [[ "$REPLY" =~ ^[Jj]$ ]]; then
     sudo reboot
 fi
