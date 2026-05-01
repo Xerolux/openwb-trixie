@@ -1,17 +1,17 @@
 #!/bin/bash
 # ============================================================================
-# Patch: Swap-Datei erstellen
+# Patch: Swap einrichten
 # ============================================================================
 # Id: swap-file
-# Name: 2GB Swap-Datei erstellen
-# Desc: Erstellt eine 2GB Swap-Datei fuer Systeme mit wenig RAM (Pi, VMs).
-#       Aktiviert sie permanent und setzt swappiness auf 10 (nur bei Notfall).
-# File: /swapfile
+# Name: Swap einrichten (zram auf Pi, Datei auf ARM/x86)
+# Desc: Raspberry Pi: installiert rpi-swap (zram-basiert, SD-schonend).
+#       Andere Systeme: erstellt 2GB Swap-Datei mit swappiness=10.
+# File: /swapfile bzw. rpi-swap Paket
 # ============================================================================
 
 PATCH_ID="swap-file"
-PATCH_NAME="2GB Swap-Datei erstellen"
-PATCH_DESC="2GB Swap fuer RAM-schwache Systeme, swappiness=10 (schont SD-Karte)"
+PATCH_NAME="Swap einrichten"
+PATCH_DESC="Pi: rpi-swap (zram). Andere: 2GB Swap-Datei. Reduziert RAM-Probleme."
 PATCH_FILE="/swapfile"
 
 SWAPFILE="/swapfile"
@@ -25,6 +25,9 @@ patch_meta() {
 }
 
 patch_check() {
+    if is_raspberry_pi 2>/dev/null && dpkg -s rpi-swap >/dev/null 2>&1; then
+        return 0
+    fi
     swapon --show=NAME --noheadings 2>/dev/null | grep -q "^${SWAPFILE}$"
 }
 
@@ -34,6 +37,18 @@ patch_apply() {
         return 0
     fi
 
+    if is_raspberry_pi 2>/dev/null; then
+        echo "  Raspberry Pi erkannt — installiere rpi-swap (zram)..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y rpi-swap 2>/dev/null
+        if dpkg -s rpi-swap >/dev/null 2>&1; then
+            echo "  OK: rpi-swap installiert (zram-basiert, aktiv nach Reboot)"
+            return 0
+        else
+            echo "  WARNUNG: rpi-swap nicht verfügbar, falle auf Swap-Datei zurück..."
+        fi
+    fi
+
+    # Fallback: manuelle Swap-Datei
     if [ -f "$SWAPFILE" ]; then
         echo "  Swap-Datei existiert bereits, aktiviere..."
         sudo swapoff "$SWAPFILE" 2>/dev/null || true
@@ -56,7 +71,7 @@ patch_apply() {
     fi
 
     if patch_check; then
-        echo "  OK: $PATCH_NAME aktiviert ($(free -h | awk '/Swap/{print $2}') Swap)"
+        echo "  OK: Swap aktiviert ($(free -h | awk '/Swap/{print $2}') total)"
         return 0
     else
         echo "  FEHLER: Swap konnte nicht aktiviert werden"
@@ -70,13 +85,18 @@ patch_revert() {
         return 0
     fi
 
+    if dpkg -s rpi-swap >/dev/null 2>&1; then
+        echo "  Entferne rpi-swap..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y rpi-swap 2>/dev/null
+    fi
+
     sudo swapoff "$SWAPFILE" 2>/dev/null || true
     sudo sed -i "\|^${SWAPFILE}|d" /etc/fstab
     sudo rm -f "$SWAPFILE"
     sudo sed -i "/^vm.swappiness=10/d" /etc/sysctl.conf
 
     if ! patch_check; then
-        echo "  Revert OK: $PATCH_NAME (Swap deaktiviert und Datei entfernt)"
+        echo "  Revert OK: Swap entfernt"
         return 0
     else
         echo "  FEHLER beim Revert"
