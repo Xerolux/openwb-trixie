@@ -268,7 +268,7 @@ configure_german_defaults() {
     sudo sh -c 'echo "Europe/Berlin" > /etc/timezone'
 
     log "Installiere/aktualisiere Locale- und Keyboard-Pakete..."
-    sudo apt install -y locales keyboard-configuration console-setup tzdata
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y locales keyboard-configuration console-setup tzdata
 
     log "Setze Locale auf de_DE.UTF-8..."
     if ! grep -q '^de_DE.UTF-8 UTF-8$' /etc/locale.gen; then
@@ -285,9 +285,15 @@ configure_german_defaults() {
         echo 'keyboard-configuration keyboard-configuration/optionscode string'
     } | sudo debconf-set-selections
     sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure keyboard-configuration
+    sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure console-setup
     sudo setupcon -k || true
 
     log_success "Zeitzone/Locale/Tastatur auf deutsche Standards gesetzt"
+}
+
+ensure_openwb_webroot() {
+    sudo mkdir -p /var/www/html
+    sudo chown root:root /var/www /var/www/html 2>/dev/null || true
 }
 
 echo "====================================================================="
@@ -341,12 +347,12 @@ configure_german_defaults
 # Schritt 1: System aktualisieren
 log "=== Schritt 1: System aktualisieren ==="
 sudo apt update
-sudo apt upgrade -y
+sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
 
 # Schritt 2: Build-Abhängigkeiten installieren
 log "=== Schritt 2: Build-Abhängigkeiten installieren ==="
 log "Installiere SWIG und Entwicklungs-Tools für Python-Pakete..."
-sudo apt install -y \
+sudo DEBIAN_FRONTEND=noninteractive apt install -y \
     swig \
     build-essential \
     python3-dev \
@@ -359,14 +365,14 @@ sudo apt install -y \
 # Raspberry Pi-spezifische Pakete nur auf Raspberry Pi mit ARM/ARM64 installieren
 if is_arm_arch && is_raspberry_pi; then
     if apt-cache show liblgpio-dev &>/dev/null; then
-        sudo apt install -y liblgpio-dev
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y liblgpio-dev
         log_success "liblgpio-dev installiert"
     else
         log_warning "liblgpio-dev nicht verfügbar, überspringe"
     fi
 
     if apt-cache show python3-rpi-lgpio &>/dev/null; then
-        sudo apt install -y python3-rpi-lgpio
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y python3-rpi-lgpio
         log_success "python3-rpi-lgpio installiert"
     else
         log_warning "python3-rpi-lgpio nicht verfügbar, überspringe"
@@ -472,7 +478,8 @@ if [ -f "/var/www/html/openWB/openwb.sh" ] || [ -f "/home/openwb/openwb/openwb.s
     log "OpenWB bereits installiert, überspringe..."
 else
     log "OpenWB wird installiert..."
-    curl -s https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh | sudo bash
+    ensure_openwb_webroot
+    curl -fsSL https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh | sudo DEBIAN_FRONTEND=noninteractive bash
     log_success "OpenWB erfolgreich installiert"
 fi
 
