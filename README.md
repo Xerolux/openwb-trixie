@@ -5,20 +5,20 @@ Ein Installer für OpenWB auf frischen Debian Trixie Systemen.
 ## Schnellstart
 
 ```bash
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh | bash
+bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh)
 ```
 
 Das Script zeigt ein Menü mit drei Python-Optionen. Alternativ direkt:
 
 ```bash
 # Option 1: System-Python + venv (empfohlen, ~10-15 Min)
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh | bash -s -- --venv
+bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --venv
 
 # Option 2: Python 3.9.25 kompilieren (~30-60 Min)
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh | bash -s -- --python39
+bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --python39
 
 # Option 3: Python 3.14.4 kompilieren + venv (~30-60 Min)
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh | bash -s -- --python314
+bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --python314
 ```
 
 ## Voraussetzungen

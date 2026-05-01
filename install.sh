@@ -6,7 +6,10 @@
 # Für FRISCHE Debian Trixie Installationen (kein Bookworm-Upgrade!)
 #
 # Verwendung:
-#   ./install.sh                  Interaktive Modus-Auswahl
+#   bash <(curl -fsSL -H "Cache-Control: no-cache" \
+#     https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh)
+#
+#   Oder mit Option:
 #   ./install.sh --venv           System-Python + venv (empfohlen, schnell)
 #   ./install.sh --python39       Python 3.9.25 kompilieren (Legacy, Original)
 #   ./install.sh --python314      Python 3.14.4 kompilieren + venv (neuestes Python)
@@ -179,7 +182,7 @@ run_as_openwb_user() {
         exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$0" "$@"
     fi
     exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" OPENWB_TRIXIE_URL="$OPENWB_TRIXIE_URL" \
-        bash -lc 'curl -fsSL "${OPENWB_TRIXIE_URL}?ts=$(date +%s)" | bash'
+        bash -lc 'curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "${OPENWB_TRIXIE_URL}?_=$(date +%s)" | bash'
 }
 
 recover_dpkg_if_needed() {
