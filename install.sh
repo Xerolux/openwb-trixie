@@ -889,9 +889,11 @@ patch_get_field() {
 }
 
 patches_load_enabled() {
-    sudo mkdir -p "$PATCH_DIR"
-    sudo touch "$PATCH_CONF"
-    sudo chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF"
+    if [ ! -d "$PATCH_DIR" ]; then
+        sudo mkdir -p "$PATCH_DIR"
+        sudo chown "$(id -un):$(id -un)" "$PATCH_DIR" 2>/dev/null || true
+    fi
+    [ -f "$PATCH_CONF" ] || touch "$PATCH_CONF"
 }
 
 patch_is_enabled() {
@@ -903,14 +905,14 @@ patch_enable() {
     local pid="$1"
     patches_load_enabled
     if ! patch_is_enabled "$pid"; then
-        echo "$pid" | sudo tee -a "$PATCH_CONF" > /dev/null
+        echo "$pid" >> "$PATCH_CONF"
     fi
 }
 
 patch_disable() {
     local pid="$1"
     [ -f "$PATCH_CONF" ] || return
-    sudo sed -i "/^${pid}$/d" "$PATCH_CONF"
+    sed -i "/^${pid}$/d" "$PATCH_CONF"
 }
 
 patches_apply_enabled() {
@@ -1219,6 +1221,11 @@ main() {
             log_error "OpenWB ist noch nicht installiert! Bitte zuerst Option 1, 2 oder 3 ausführen."
             exit 1
         fi
+
+        mkdir -p "$PATCH_DIR"
+        chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
+        touch "$PATCH_CONF" 2>/dev/null || true
+        chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
 
         run_as_openwb_user
 
