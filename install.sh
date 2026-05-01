@@ -22,13 +22,13 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="e74375a"
+BUILD_ID="4186526"
 
 # ============================================================================
 # Argumente parsen
 # ============================================================================
-MODE=""
-NONINTERACTIVE=0
+MODE="${MODE:-}"
+NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
