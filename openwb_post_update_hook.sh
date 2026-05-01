@@ -141,6 +141,15 @@ EOF
         systemctl daemon-reload
         systemctl enable mosquitto_local >/dev/null 2>&1 || true
     fi
+
+    # PHP Upload-Limit
+    local php_ver
+    php_ver=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;' 2>/dev/null)
+    if [ -n "$php_ver" ]; then
+        local php_ini="/etc/php/$php_ver/apache2/conf.d/20-uploadlimit.ini"
+        printf 'upload_max_filesize = 300M\npost_max_size = 300M\n' | sudo tee "$php_ini" > /dev/null 2>/dev/null || true
+        log_success "PHP Upload-Limit gesetzt (300M)"
+    fi
 }
 
 install_system_rpilgpio() {
