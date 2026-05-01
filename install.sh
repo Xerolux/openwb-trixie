@@ -9,6 +9,7 @@
 #   ./install.sh                  Interaktive Modus-Auswahl
 #   ./install.sh --venv           System-Python + venv (empfohlen, schnell)
 #   ./install.sh --python39       Python 3.9.25 kompilieren (Legacy, Original)
+#   ./install.sh --python314      Python 3.14.4 kompilieren + venv (neuestes Python)
 #   ./install.sh --help           Hilfe anzeigen
 #
 # Getestet auf: x86_64, ARM64, ARM32, Proxmox, Raspberry Pi
@@ -32,6 +33,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --python39|--legacy|-l)
             MODE="python39"
+            shift
+            ;;
+        --python314|--latest|-p)
+            MODE="python314"
             shift
             ;;
         --non-interactive|-n)
@@ -440,23 +445,9 @@ do_python_39() {
         --with-system-expat \
         --with-system-ffi
 
-    log "Kompiliere Python 3.9.25..."
-    local available_ram cpu_cores jobs
-    available_ram=$(free -g | awk 'NR==2{print $7}')
-    cpu_cores=$(nproc)
-    if [ "${available_ram:-0}" -lt 2 ]; then
-        jobs=1
-    elif [ "${available_ram:-0}" -lt 4 ]; then
-        jobs=2
-    else
-        jobs=$((cpu_cores > 4 ? 4 : cpu_cores))
-    fi
-    log "Nutze $jobs Jobs (RAM: ${available_ram:-?}GB, Cores: $cpu_cores)"
-    make -j"$jobs"
+    _compile
 
-    make test || log_warning "Einige Tests fehlgeschlagen (kann ignoriert werden)"
-
-    log "Installiere Python 3.9.25..."
+    log "Installiere Python 3.9.25 (ersetzt System-Python)..."
     sudo make install
     sudo ldconfig
     sudo ln -sf /usr/local/bin/python3 /usr/local/bin/python
@@ -468,6 +459,173 @@ do_python_39() {
     rm -rf /tmp/Python-3.9.25*
 
     log_success "Python 3.9.25 installiert: $(python3 --version 2>&1)"
+}
+
+# ============================================================================
+# Python-Modus: Python 3.14.4 kompilieren + venv (neuestes Python)
+# ============================================================================
+PYTHON_314_VERSION="3.14.4"
+PYTHON_314_DIR="/opt/python${PYTHON_314_VERSION}"
+
+do_python_314() {
+    log_step "Python ${PYTHON_314_VERSION} kompilieren + venv (30-60 Min)"
+
+    log "Kompiliert Python ${PYTHON_314_VERSION} als ZUSÄTZLICHE Installation"
+    log "System-Python bleibt UNVERÄNDERT, venv nutzt das neue Python"
+    log_warning "Dauer: 30-60 Minuten je nach Hardware"
+    echo ""
+
+    if [ "$NONINTERACTIVE" -ne 1 ]; then
+        read -p "Fortfahren? (j/N): " -n 1 -r < /dev/tty
+        echo
+        if [[ ! "$REPLY" =~ ^[JjYy]$ ]]; then
+            log "Abgebrochen"
+            exit 0
+        fi
+    fi
+
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
+        libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev \
+        libbz2-dev liblzma-dev libgdbm-compat-dev libdb5.3-dev \
+        uuid-dev tk-dev libexpat1-dev libmpdec-dev \
+        wget curl make gcc g++ pkg-config \
+        libxml2-dev libxslt1-dev
+
+    # Prüfe ob bereits kompiliert
+    if [ -x "$PYTHON_314_DIR/bin/python3" ]; then
+        log_success "Python ${PYTHON_314_VERSION} bereits kompiliert: $($PYTHON_314_DIR/bin/python3 --version 2>&1)"
+    else
+        log "Lade Python ${PYTHON_314_VERSION} Quellcode..."
+        cd /tmp
+        wget -q "https://www.python.org/ftp/python/${PYTHON_314_VERSION}/Python-${PYTHON_314_VERSION}.tar.xz"
+        tar -xJf "Python-${PYTHON_314_VERSION}.tar.xz"
+        cd "Python-${PYTHON_314_VERSION}"
+
+        log "Konfiguriere Python ${PYTHON_314_VERSION}..."
+        ./configure \
+            --prefix="$PYTHON_314_DIR" \
+            --enable-optimizations \
+            --with-ensurepip=install \
+            --enable-shared \
+            --enable-loadable-sqlite-extensions \
+            --with-system-expat \
+            --with-system-ffi
+
+        _compile
+
+        log "Installiere Python ${PYTHON_314_VERSION} nach $PYTHON_314_DIR (altinstall)..."
+        sudo make install
+
+        # Shared Library Pfad
+        echo "$PYTHON_314_DIR/lib" | sudo tee /etc/ld.so.conf.d/python${PYTHON_314_VERSION}.conf > /dev/null
+        sudo ldconfig
+
+        cd /
+        rm -rf "/tmp/Python-${PYTHON_314_VERSION}"*
+
+        log_success "Python ${PYTHON_314_VERSION} kompiliert: $($PYTHON_314_DIR/bin/python3 --version 2>&1)"
+    fi
+
+    # venv aus dem kompilierten Python erstellen
+    log "Erstelle venv aus Python ${PYTHON_314_VERSION}..."
+    if [ -d "$VENV_DIR" ]; then
+        log "venv existiert, aktualisiere..."
+    else
+        sudo mkdir -p "$VENV_DIR"
+    fi
+
+    "$PYTHON_314_DIR/bin/python3" -m venv --clear "$VENV_DIR"
+
+    if id "$OPENWB_USER" &>/dev/null; then
+        sudo chown -R "$OPENWB_USER:$OPENWB_USER" "$VENV_DIR"
+    fi
+
+    # Pakete installieren
+    local requirements="$SCRIPT_DIR/requirements.txt"
+    if [ -f "$requirements" ]; then
+        source "$VENV_DIR/bin/activate"
+        pip install --upgrade pip setuptools wheel
+        local filtered_req
+        filtered_req=$(mktemp)
+        grep -v '^rpi-lgpio' "$requirements" > "$filtered_req"
+        pip install -r "$filtered_req"
+        rm -f "$filtered_req"
+        pip freeze > "$VENV_DIR/installed_requirements.txt"
+        cp "$requirements" "$VENV_DIR/requirements.txt"
+        deactivate
+    fi
+
+    # Systempaket python3-rpi-lgpio (nur Raspberry Pi)
+    if is_arm_arch && is_raspberry_pi; then
+        if apt-cache show python3-rpi-lgpio >/dev/null 2>&1; then
+            sudo apt-get install -y python3-rpi-lgpio
+        fi
+    fi
+
+    # asyncio.coroutine Shim (nicht nötig für 3.14, aber sicherheitshalber)
+    local py_ver
+    py_ver=$("$VENV_DIR/bin/python3" -c 'import sys; v=sys.version_info; print(f"{v.major}.{v.minor}")' 2>/dev/null || echo "0.0")
+    local py_major py_minor
+    py_major=$(echo "$py_ver" | cut -d. -f1)
+    py_minor=$(echo "$py_ver" | cut -d. -f2)
+    local shim_dir="$VENV_DIR/lib/python${py_major}.${py_minor}/site-packages"
+    if [ "$py_major" -ge 3 ] && [ "$py_minor" -ge 11 ] && [ ! -f "$shim_dir/openwb_py313_compat.py" ]; then
+        sudo mkdir -p "$shim_dir"
+        sudo tee "$shim_dir/openwb_py313_compat.py" > /dev/null << 'PYEOF'
+import asyncio
+import types
+import sys
+if sys.version_info >= (3, 11) and not hasattr(asyncio, "coroutine"):
+    def _coroutine_compat(func):
+        return types.coroutine(func)
+    asyncio.coroutine = _coroutine_compat
+PYEOF
+        echo "import openwb_py313_compat" | sudo tee "$shim_dir/openwb_py313_compat.pth" > /dev/null
+    fi
+
+    # Wrapper
+    sudo tee /usr/local/bin/openwb-activate > /dev/null << 'WRAPPER'
+#!/bin/bash
+VENV_DIR="/opt/openwb-venv"
+if [ ! -d "$VENV_DIR" ]; then echo "venv nicht gefunden"; exit 1; fi
+source "$VENV_DIR/bin/activate"
+if [ $# -gt 0 ]; then "$@"; exit $?; fi
+echo "OpenWB venv aktiviert. Deaktivieren: deactivate"
+exec $SHELL
+WRAPPER
+    sudo chmod +x /usr/local/bin/openwb-activate
+
+    # Config
+    sudo tee "$VENV_DIR/.openwb-venv-config" > /dev/null << EOF
+VENV_VERSION_INSTALLED="1.0.0"
+VENV_CREATED="$(date +'%Y-%m-%d %H:%M:%S')"
+VENV_PYTHON_VERSION="$($PYTHON_314_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
+VENV_DIR="$VENV_DIR"
+VENV_COMPILED_PYTHON="$PYTHON_314_DIR"
+EOF
+    if id "$OPENWB_USER" &>/dev/null; then
+        sudo chown -R "$OPENWB_USER:$OPENWB_USER" "$VENV_DIR"
+    fi
+
+    log_success "venv erstellt mit Python $($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
+}
+
+# Kompilierungs-Helper (gemeinsam für 3.9 und 3.14)
+_compile() {
+    local available_ram cpu_cores jobs
+    available_ram=$(free -g | awk 'NR==2{print $7}')
+    cpu_cores=$(nproc)
+    if [ "${available_ram:-0}" -lt 2 ]; then
+        jobs=1
+    elif [ "${available_ram:-0}" -lt 4 ]; then
+        jobs=2
+    else
+        jobs=$((cpu_cores > 4 ? 4 : cpu_cores))
+    fi
+    log "Kompiliere mit $jobs Jobs (RAM: ${available_ram:-?}GB, Cores: $cpu_cores)..."
+    make -j"$jobs"
+    make test || log_warning "Einige Tests fehlgeschlagen (kann ignoriert werden)"
 }
 
 # ============================================================================
@@ -502,7 +660,7 @@ do_openwb_install() {
         "$packages_script"
 
     # pip-Aufrufe auf venv umleiten (falls venv-Modus)
-    if [ "$MODE" = "venv" ]; then
+    if [ "$MODE" = "venv" ] || [ "$MODE" = "python314" ]; then
         sed -i \
             -e "s@curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s@bash \"$packages_script\"@g" \
             -e 's@mkdir "$OPENWBBASEDIR"@mkdir -p "$OPENWBBASEDIR"@g' \
@@ -556,7 +714,7 @@ do_runtime_patches() {
         fi
     done
 
-    if [ "$MODE" = "venv" ]; then
+    if [ "$MODE" = "venv" ] || [ "$MODE" = "python314" ]; then
         local venv_python="$VENV_DIR/bin/python3"
         local venv_pip="$VENV_DIR/bin/pip3"
 
@@ -641,13 +799,16 @@ do_final_check() {
     printf "│ %-22s %28s │\n" "Debian" "$deb_ver"
 
     # Python
-    if [ "$MODE" = "venv" ]; then
-        printf "│ %-22s %28s │\n" "Python (System)" "$(python3 --version 2>&1 | awk '{print $2}')"
-        printf "│ %-22s %28s │\n" "Python (venv)" "$($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
-        printf "│ %-22s %28s │\n" "venv" "$VENV_DIR"
-    else
-        printf "│ %-22s %28s │\n" "Python" "$(python3 --version 2>&1 | awk '{print $2}')"
-    fi
+    case "$MODE" in
+        venv|python314)
+            printf "│ %-22s %28s │\n" "Python (System)" "$(python3 --version 2>&1 | awk '{print $2}')"
+            printf "│ %-22s %28s │\n" "Python (venv)" "$($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
+            printf "│ %-22s %28s │\n" "venv" "$VENV_DIR"
+            ;;
+        python39)
+            printf "│ %-22s %28s │\n" "Python" "$(python3 --version 2>&1 | awk '{print $2}')"
+            ;;
+    esac
 
     # Platform
     printf "│ %-22s %28s │\n" "Architektur" "$(uname -m)"
@@ -718,28 +879,35 @@ main() {
         echo "      - Überschreibt das System-Python"
         echo "      - Langsam: ~30-60 Minuten"
         echo ""
+        echo "  [3] Python 3.14.4 kompilieren + venv (NEUESTES PYTHON)"
+        echo "      - Kompiliert Python 3.14.4 als Zusatz-Installation"
+        echo "      - System-Python bleibt unverändert"
+        echo "      - venv nutzt das neu kompilierte Python"
+        echo "      - Langsam: ~30-60 Minuten"
+        echo ""
         if [ "$NONINTERACTIVE" -eq 1 ]; then
             log_warning "Non-interactive Modus: wähle venv"
             MODE="venv"
         else
             while true; do
-                read -p "Wahl [1/2]: " -n 1 -r < /dev/tty
+                read -p "Wahl [1/2/3]: " -n 1 -r < /dev/tty
                 echo
                 case "$REPLY" in
-                    1|"") MODE="venv";  break ;;
-                    2)    MODE="python39"; break ;;
-                    *)    echo "Bitte 1 oder 2 eingeben" ;;
+                    1|"") MODE="venv";      break ;;
+                    2)    MODE="python39";   break ;;
+                    3)    MODE="python314";  break ;;
+                    *)    echo "Bitte 1, 2 oder 3 eingeben" ;;
                 esac
             done
         fi
     fi
 
     echo ""
-    if [ "$MODE" = "venv" ]; then
-        log_success "Modus: System-Python + venv (schnell, modern)"
-    else
-        log_success "Modus: Python 3.9.25 kompilieren (original-getreu)"
-    fi
+    case "$MODE" in
+        venv)       log_success "Modus: System-Python + venv (schnell, modern)" ;;
+        python39)   log_success "Modus: Python 3.9.25 kompilieren (original-getreu)" ;;
+        python314)  log_success "Modus: Python 3.14.4 kompilieren + venv (neuestes Python)" ;;
+    esac
     echo ""
 
     # Als openwb-User ausführen
@@ -800,13 +968,20 @@ main() {
     configure_php
 
     # ── Schritt 7: Python ──
-    if [ "$MODE" = "venv" ]; then
-        log_step "Schritt 7/8: Python venv erstellen"
-        do_python_venv
-    else
-        log_step "Schritt 7/8: Python 3.9.25 kompilieren"
-        do_python_39
-    fi
+    case "$MODE" in
+        venv)
+            log_step "Schritt 7/8: Python venv erstellen"
+            do_python_venv
+            ;;
+        python39)
+            log_step "Schritt 7/8: Python 3.9.25 kompilieren"
+            do_python_39
+            ;;
+        python314)
+            log_step "Schritt 7/8: Python 3.14.4 kompilieren + venv"
+            do_python_314
+            ;;
+    esac
 
     # ── Schritt 8: OpenWB ──
     log_step "Schritt 8/8: OpenWB installieren + patches"
