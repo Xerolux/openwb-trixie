@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.7"
+INSTALLER_VERSION="2026-05-01.8"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -462,13 +462,18 @@ fi
 # Schritt 4: GPIO-Konfiguration
 log "=== Schritt 4: GPIO-Konfiguration ==="
 
-# Ermittle korrekten config.txt Pfad (neu: /boot/firmware/, alt: /boot/)
-if [ -f "/boot/firmware/config.txt" ]; then
-    CONFIG_TXT="/boot/firmware/config.txt"
-elif [ -f "/boot/config.txt" ]; then
-    CONFIG_TXT="/boot/config.txt"
+if is_arm_arch && is_raspberry_pi; then
+    # Ermittle korrekten config.txt Pfad (neu: /boot/firmware/, alt: /boot/)
+    if [ -f "/boot/firmware/config.txt" ]; then
+        CONFIG_TXT="/boot/firmware/config.txt"
+    elif [ -f "/boot/config.txt" ]; then
+        CONFIG_TXT="/boot/config.txt"
+    else
+        log_warning "config.txt nicht gefunden - GPIO-Konfiguration übersprungen"
+        CONFIG_TXT=""
+    fi
 else
-    log_warning "config.txt nicht gefunden - GPIO-Konfiguration übersprungen"
+    log "Kein Raspberry Pi erkannt - GPIO-Konfiguration wird übersprungen"
     CONFIG_TXT=""
 fi
 
@@ -615,13 +620,17 @@ echo "  ✓ Virtual Environment: /opt/openwb-venv"
 echo "  ✓ Post-Update Hook: installiert"
 echo ""
 echo "Nächste Schritte:"
-echo "  1. Neustart empfohlen für GPIO-Konfiguration:"
-echo "     sudo reboot"
-echo ""
-echo "  2. Nach Neustart - OpenWB Web-Interface öffnen:"
+if is_arm_arch && is_raspberry_pi; then
+    echo "  1. Neustart empfohlen für GPIO-Konfiguration:"
+    echo "     sudo reboot"
+    echo ""
+    echo "  2. Nach Neustart - OpenWB Web-Interface öffnen:"
+else
+    echo "  1. OpenWB Web-Interface öffnen:"
+fi
 echo "     http://$(hostname -I | awk '{print $1}')"
 echo ""
-echo "  3. Python-Skripte mit venv ausführen:"
+echo "  2. Python-Skripte mit venv ausführen:"
 echo "     openwb-activate python script.py"
 echo ""
 echo "Vorteile dieser Installation:"
@@ -634,9 +643,11 @@ echo "====================================================================="
 
 show_service_status
 
-log_warning "Ein Neustart wird empfohlen für GPIO-Konfiguration!"
-read -p "Jetzt neustarten? (j/N): " -n 1 -r < /dev/tty
-echo
-if [[ "$REPLY" =~ ^[Jj]$ ]]; then
-    sudo reboot
+if is_arm_arch && is_raspberry_pi; then
+    log_warning "Ein Neustart wird empfohlen für GPIO-Konfiguration!"
+    read -p "Jetzt neustarten? (j/N): " -n 1 -r < /dev/tty
+    echo
+    if [[ "$REPLY" =~ ^[Jj]$ ]]; then
+        sudo reboot
+    fi
 fi
