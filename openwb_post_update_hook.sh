@@ -74,6 +74,34 @@ PATCH_DIR="/opt/openwb-patches"
 PATCH_CONF="$PATCH_DIR/enabled.conf"
 PATCHES_SRC_DIR="/home/openwb/openwb-trixie"
 
+is_arm_arch() {
+    case "$(uname -m 2>/dev/null || true)" in
+        arm*|aarch64) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_raspberry_pi() {
+    [ -f /proc/device-tree/model ] && grep -qi "raspberry" /proc/device-tree/model 2>/dev/null
+}
+
+patch_get_field() {
+    grep -m1 "^# $1:" "$2" 2>/dev/null | sed "s/^# $1: *//"
+}
+
+patch_matches_arch() {
+    local file="$1"
+    local arch
+    arch=$(patch_get_field "Arch" "$file")
+    [ -z "$arch" ] && return 0
+    case "$arch" in
+        arm)  is_arm_arch ;;
+        rpi)  is_arm_arch && is_raspberry_pi ;;
+        x86)  ! is_arm_arch ;;
+        *)    return 0 ;;
+    esac
+}
+
 reapply_openwb_patches() {
     local atreboot_file="$OPENWB_DIR/runs/atreboot.sh"
     local service_file="$OPENWB_DIR/data/config/openwb2.service"
@@ -258,6 +286,10 @@ if [ -f "$PATCH_CONF" ] && [ -s "$PATCH_CONF" ]; then
         done
         if [ -z "$pfile" ]; then
             log_warning "Patch '$pid' nicht in $PATCHES_SRC_DIR/patches/"
+            continue
+        fi
+        if ! patch_matches_arch "$pfile"; then
+            log "  $pid: übersprungen (falsche Architektur)"
             continue
         fi
         export OPENWB_DIR VENV_DIR

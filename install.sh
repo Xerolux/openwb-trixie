@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="6a4092d"
+BUILD_ID="b3f9952"
 
 # ============================================================================
 # Argumente parsen
@@ -891,6 +891,20 @@ patch_get_field() {
     grep -m1 "^# $field:" "$file" 2>/dev/null | sed "s/^# $field: *//"
 }
 
+patch_matches_arch() {
+    local file="$1"
+    local arch
+    arch=$(patch_get_field "$file" "Arch")
+    [ -z "$arch" ] && return 0
+
+    case "$arch" in
+        arm)  is_arm_arch ;;
+        rpi)  is_arm_arch && is_raspberry_pi ;;
+        x86)  ! is_arm_arch ;;
+        *)    return 0 ;;
+    esac
+}
+
 patches_load_enabled() {
     if [ ! -d "$PATCH_DIR" ]; then
         sudo mkdir -p "$PATCH_DIR"
@@ -1052,6 +1066,7 @@ whiptail_patches_menu() {
     while IFS= read -r pfile; do
         [ -z "$pfile" ] && continue
         local full="$PATCHES_SRC_DIR/patches/$pfile"
+        patch_matches_arch "$full" || continue
         local pid name desc
         pid=$(patch_get_field "$full" "Id")
         name=$(patch_get_field "$full" "Name")
@@ -1144,6 +1159,7 @@ patches_menu() {
         while IFS= read -r pfile; do
             [ -z "$pfile" ] && continue
             local full="$PATCHES_SRC_DIR/patches/$pfile"
+            patch_matches_arch "$full" || continue
             local pid name desc
             pid=$(patch_get_field "$full" "Id")
             name=$(patch_get_field "$full" "Name")

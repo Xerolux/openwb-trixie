@@ -8,6 +8,7 @@
 #       Setzt CPU-Governor auf ondemand. Spart ca. 100-200mA.
 #       Nur fuer Raspberry Pi und aehnliche ARM-Geraete.
 # File: /etc/rc.local + /boot/firmware/config.txt
+# Arch: rpi
 # ============================================================================
 
 PATCH_ID="power-saving"

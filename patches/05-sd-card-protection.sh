@@ -8,6 +8,7 @@
 #       konfiguriert journald auf volatile Speicherung.
 #       Reduziert SD-Karten-Verschleiss deutlich.
 # File: /etc/fstab + /etc/systemd/journald.conf
+# Arch: arm
 # ============================================================================
 
 PATCH_ID="sd-card-protection"

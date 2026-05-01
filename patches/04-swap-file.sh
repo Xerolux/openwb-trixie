@@ -7,6 +7,7 @@
 # Desc: Raspberry Pi: installiert rpi-swap (zram-basiert, SD-schonend).
 #       Andere Systeme: erstellt 2GB Swap-Datei mit swappiness=10.
 # File: /swapfile bzw. rpi-swap Paket
+# Arch: arm
 # ============================================================================
 
 PATCH_ID="swap-file"
