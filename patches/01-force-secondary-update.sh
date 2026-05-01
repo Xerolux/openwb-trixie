@@ -27,8 +27,8 @@ PATCH_DESC="Entfernt Branch-Pruefung beim Update sekundaer Wallboxen (immer upda
 PATCH_FILE="packages/helpermodules/command.py"
 
 # Marker der im Code gesucht/ersetzt wird
-MARKER_ORIGINAL='cp.current_branch == "Release"'
-MARKER_PATCHED='# openwb-trixie-patch: force-secondary-update (was: cp.current_branch == "Release")'
+MARKER_ORIGINAL='cp.chargepoint.data.get.current_branch == "Release"'
+MARKER_PATCHED='# openwb-trixie-patch: force-secondary-update (was: current_branch == "Release")'
 
 patch_meta() {
     echo "id:   $PATCH_ID"
