@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.23"
+INSTALLER_VERSION="2026-05-01.24"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -378,6 +378,42 @@ cleanup_venv_artifacts() {
     fi
 }
 
+ensure_mosquitto_local_native_unit() {
+    local init_script="/etc/init.d/mosquitto_local"
+    local unit_file="/etc/systemd/system/mosquitto_local.service"
+
+    if [ ! -f "$init_script" ]; then
+        return 0
+    fi
+
+    if [ -f "$unit_file" ]; then
+        return 0
+    fi
+
+    log "Erstelle native systemd Unit für mosquitto_local..."
+    sudo tee "$unit_file" > /dev/null <<'EOF'
+[Unit]
+Description=Mosquitto Local Instance (openWB)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+ExecStart=/etc/init.d/mosquitto_local start
+ExecStop=/etc/init.d/mosquitto_local stop
+ExecReload=/etc/init.d/mosquitto_local restart
+PIDFile=/run/mosquitto_local.pid
+TimeoutSec=60
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable mosquitto_local >/dev/null 2>&1 || true
+}
+
 run_openwb_core_installer_noninteractive() {
     local tmp_dir install_script packages_script
     tmp_dir=$(mktemp -d)
@@ -631,6 +667,7 @@ if [ -n "$OPENWB_RUNTIME_DIR" ]; then
     configure_openwb_venv_runtime "$OPENWB_RUNTIME_DIR"
     patch_openwb_runtime_scripts "$OPENWB_RUNTIME_DIR"
     cleanup_venv_artifacts
+    ensure_mosquitto_local_native_unit
 fi
 
 # Schritt 8: Post-Update Hook installieren
