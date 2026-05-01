@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.22"
+INSTALLER_VERSION="2026-05-01.23"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -356,11 +356,17 @@ prepare_openwb_requirements_for_py313() {
 patch_openwb_runtime_scripts() {
     local openwb_dir="$1"
     local atreboot_file="$openwb_dir/runs/atreboot.sh"
+    local simpleapi_service_file="$openwb_dir/data/config/openwb-simpleAPI.service"
 
     if [ -f "$atreboot_file" ]; then
         log "Patch: atreboot.sh auf venv-pip (PEP668-sicher)..."
         sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$atreboot_file"
         sudo chmod +x "$atreboot_file"
+    fi
+
+    if [ -f "$simpleapi_service_file" ]; then
+        log "Patch: openwb-simpleAPI.service auf venv-Python..."
+        sudo sed -i -E 's@^ExecStart=.*simpleAPI_mqtt\.py$@ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py@g' "$simpleapi_service_file"
     fi
 }
 
