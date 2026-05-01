@@ -178,8 +178,8 @@ run_as_openwb_user() {
     if [ -f "$0" ] && [ -r "$0" ]; then
         exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$0" "$@"
     fi
-    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" OPENWB_TRIXIE_SCRIPT_URL="$OPENWB_TRIXIE_SCRIPT_URL" \
-        bash -lc 'curl -fsSL "${OPENWB_TRIXIE_SCRIPT_URL}?ts=$(date +%s)" | bash'
+    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" OPENWB_TRIXIE_URL="$OPENWB_TRIXIE_URL" \
+        bash -lc 'curl -fsSL "${OPENWB_TRIXIE_URL}?ts=$(date +%s)" | bash'
 }
 
 recover_dpkg_if_needed() {
@@ -845,18 +845,25 @@ do_final_check() {
 # HAUPTPROGRAMM
 # ============================================================================
 main() {
+    local BOLD='\033[1m'
+    local DIM='\033[2m'
+    local W='\033[0m'       # White/Reset
+    local GR='\033[0;32m'   # Green
+    local BG='\033[1;32m'   # Bold Green
+    local CY='\033[0;36m'   # Cyan
+    local BY='\033[1;33m'   # Bold Yellow
+    local YB='\033[43;1;30m' # Yellow bg, Black text
+    local BB='\033[1;34m'   # Bold Blue
+
     echo ""
-    echo "  ╔═══════════════════════════════════════════════════════════╗"
-    echo "  ║                                                           ║"
-    echo "  ║              OpenWB  ·  Trixie Installer                 ║"
-    echo "  ║                    v$INSTALLER_VERSION                        ║"
-    echo "  ║                                                           ║"
-    echo "  ║         Für FRISCHE Debian Trixie Installationen         ║"
-    echo "  ║                                                           ║"
-    echo "  ╚═══════════════════════════════════════════════════════════╝"
+    echo -e "  ${BB}╔═══════════════════════════════════════════════════════════╗${W}"
+    echo -e "  ${BB}║${W}                                                           ${BB}║${W}"
+    echo -e "  ${BB}║${W}        ${BOLD}OpenWB  ·  Debian Trixie Installer${W}                ${BB}║${W}"
+    echo -e "  ${BB}║${W}                 ${DIM}v${INSTALLER_VERSION}${W}                              ${BB}║${W}"
+    echo -e "  ${BB}║${W}                                                           ${BB}║${W}"
+    echo -e "  ${BB}╚═══════════════════════════════════════════════════════════╝${W}"
     echo ""
 
-    # Trixie prüfen
     if ! is_trixie; then
         log_error "Dies ist KEIN Debian Trixie System!"
         log_error "Bitte zuerst Debian Trixie installieren."
@@ -864,49 +871,48 @@ main() {
         echo "Download: https://www.debian.org/devel/"
         exit 1
     fi
-    log_success "Debian Trixie erkannt ($(cat /etc/debian_version 2>/dev/null || echo "?"))"
-    log "Architektur: $(uname -m)$(is_raspberry_pi && echo ' (Raspberry Pi)' || true)"
+    log_success "Debian Trixie erkannt (${BOLD}$(cat /etc/debian_version 2>/dev/null || echo "?")${W})"
+    log "Architektur: ${BOLD}$(uname -m)${W}$(is_raspberry_pi && echo " ${GR}(Raspberry Pi)${W}" || true)"
 
-    # Modus-Auswahl
     if [ -z "$MODE" ]; then
         local sys_py
         sys_py=$(python3 --version 2>&1 | awk '{print $2}')
+
         echo ""
-        echo "  ┌─────────────────────────────────────────────────────────┐"
-        echo "  │              Python-Installationsmodus wählen           │"
-        echo "  ├─────────────────────────────────────────────────────────┤"
-        echo "  │                                                         │"
-        echo "  │   [1]  System-Python + venv              EMPFOHLEN      │"
-        echo "  │        Aktuelles System-Python ($sys_py)"
-        echo "  │        Pakete isoliert im Virtual Environment           │"
-        echo "  │        System bleibt unangetastet                       │"
-        echo "  │        Dauer: ca. 10-15 Minuten                         │"
-        echo "  │                                                         │"
-        echo "  │   [2]  Python 3.9.25 kompilieren         ORIGINAL       │"
-        echo "  │        Kompiliert aus Quellcode, ersetzt System-Python  │"
-        echo "  │        Keine Anpassungen am OpenWB-Code nötig           │"
-        echo "  │        Dauer: ca. 30-60 Minuten                         │"
-        echo "  │                                                         │"
-        echo "  │   [3]  Python 3.14.4 kompilieren + venv  NEUSTE         │"
-        echo "  │        Kompiliert neuestes Python als Zusatz-Install.   │"
-        echo "  │        System-Python bleibt unverändert                 │"
-        echo "  │        venv nutzt das neu kompilierte Python 3.14       │"
-        echo "  │        Dauer: ca. 30-60 Minuten                         │"
-        echo "  │                                                         │"
-        echo "  └─────────────────────────────────────────────────────────┘"
+        echo -e "  ${BB}┌──────────────────────────────────────────────────────────┐${W}"
+        echo -e "  ${BB}│${W}          ${BOLD}Welchen Python-Modus möchtest du nutzen?${W}             ${BB}│${W}"
+        echo -e "  ${BB}├──────────────────────────────────────────────────────────┤${W}"
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${BY} [1]${W}  ${BOLD}System-Python + venv${W}                   ${BG}EMPFOHLEN${W}   ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${CY}Python ${sys_py}${W} · Pakete isoliert im venv               ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${GR}System bleibt unangetastet${W}                              ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 10-15 Minuten${W}                               ${BB}│${W}"
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${BY} [2]${W}  ${BOLD}Python 3.9.25 kompilieren${W}               ${YB}ORIGINAL${W}    ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${CY}Kompiliert aus Quellcode${W}                                ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${RED}Ersetzt System-Python!${W} · Keine Code-Patches nötig       ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 30-60 Minuten${W}                               ${BB}│${W}"
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${BY} [3]${W}  ${BOLD}Python 3.14.4 kompilieren + venv${W}        ${CY}NEUESTE${W}     ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${CY}Neuestes Python als Zusatz-Installation${W}                 ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${GR}System-Python bleibt unverändert${W}                        ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 30-60 Minuten${W}                               ${BB}│${W}"
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
         echo ""
         if [ "$NONINTERACTIVE" -eq 1 ]; then
             log_warning "Non-interactive Modus: wähle Option 1"
             MODE="venv"
         else
             while true; do
-                read -p "  Deine Wahl [1/2/3]: " -n 1 -r < /dev/tty
+                echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}]: "
+                read -n 1 -r < /dev/tty
                 echo
                 case "$REPLY" in
                     1|"") MODE="venv";      break ;;
                     2)    MODE="python39";   break ;;
                     3)    MODE="python314";  break ;;
-                    *)    echo "  Bitte 1, 2 oder 3 eingeben" ;;
+                    *)    echo -e "  ${RED}Bitte 1, 2 oder 3 eingeben${W}" ;;
                 esac
             done
         fi
@@ -914,9 +920,9 @@ main() {
 
     echo ""
     case "$MODE" in
-        venv)       log_success "Option 1: System-Python + venv" ;;
-        python39)   log_success "Option 2: Python 3.9.25 kompilieren (original-getreu)" ;;
-        python314)  log_success "Option 3: Python 3.14.4 kompilieren + venv" ;;
+        venv)       echo -e "  ${BG}Ausgewählt: Option 1 — System-Python + venv${W}" ;;
+        python39)   echo -e "  ${BY}Ausgewählt: Option 2 — Python 3.9.25 kompilieren (original-getreu)${W}" ;;
+        python314)  echo -e "  ${CY}Ausgewählt: Option 3 — Python 3.14.4 kompilieren + venv${W}" ;;
     esac
     echo ""
 
