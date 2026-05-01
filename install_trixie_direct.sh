@@ -258,7 +258,8 @@ if [ ! -d "/home/openwb/openwb-trixie" ]; then
     sudo apt install git -y
 
     log "Repository klonen..."
-    cd /home/openwb 2>/dev/null || cd ~
+    sudo mkdir -p /home/openwb
+    cd /home/openwb
     git clone https://github.com/Xerolux/openwb-trixie.git
     cd openwb-trixie
 else
@@ -351,7 +352,7 @@ fi
 
 # PEP668/externally-managed vermeiden: OpenWB Runtime auf venv umstellen
 OPENWB_RUNTIME_DIR=""
-for candidate in "/var/www/html/openWB" "/home/openwb/openWB" "/opt/openWB"; do
+for candidate in "/var/www/html/openWB" "/home/openwb/openWB" "/home/openwb/openwb" "/opt/openWB"; do
     if [ -d "$candidate" ]; then
         OPENWB_RUNTIME_DIR="$candidate"
         break

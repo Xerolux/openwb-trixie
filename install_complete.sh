@@ -276,6 +276,7 @@ main() {
             sudo apt install git -y
             
             log "Repository klonen..."
+            sudo mkdir -p /home/openwb
             cd /home/openwb
             git clone https://github.com/Xerolux/openwb-trixie.git
             cd openwb-trixie
