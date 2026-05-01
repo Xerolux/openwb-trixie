@@ -13,6 +13,7 @@
 #   ./install.sh --venv           System-Python + venv (empfohlen, schnell)
 #   ./install.sh --python39       Python 3.9.25 kompilieren (Legacy, Original)
 #   ./install.sh --python314      Python 3.14.4 kompilieren + venv (neuestes Python)
+#   ./install.sh --patches        Feature-Patches verwalten
 #   ./install.sh --help           Hilfe anzeigen
 #
 # Getestet auf: x86_64, ARM64, ARM32, Proxmox, Raspberry Pi
@@ -40,6 +41,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --python314|--latest|-p)
             MODE="python314"
+            shift
+            ;;
+        --patches)
+            MODE="patches"
             shift
             ;;
         --non-interactive|-n)
@@ -1152,7 +1157,7 @@ main() {
 
         echo ""
         echo -e "  ${BB}┌──────────────────────────────────────────────────────────┐${W}"
-        echo -e "  ${BB}│${W}          ${BOLD}Welchen Python-Modus möchtest du nutzen?${W}             ${BB}│${W}"
+        echo -e "  ${BB}│${W}              ${BOLD}Was möchtest du tun?${W}                                ${BB}│${W}"
         echo -e "  ${BB}├──────────────────────────────────────────────────────────┤${W}"
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
         echo -e "  ${BB}│${W}  ${BY} [1]${W}  ${BOLD}System-Python + venv${W}                   ${BG}EMPFOHLEN${W}   ${BB}│${W}"
@@ -1170,6 +1175,10 @@ main() {
         echo -e "  ${BB}│${W}      ${GR}System-Python bleibt unverändert${W}                        ${BB}│${W}"
         echo -e "  ${BB}│${W}      ${DIM}Dauer: ca. 30-60 Minuten${W}                               ${BB}│${W}"
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${BY} [4]${W}  ${BOLD}Feature-Patches verwalten${W}                             ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${DIM}Patches installieren / entfernen${W}                       ${BB}│${W}"
+        echo -e "  ${BB}│${W}      ${DIM}(OpenWB muss bereits installiert sein)${W}                ${BB}│${W}"
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
         echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
         echo ""
         if [ "$NONINTERACTIVE" -eq 1 ]; then
@@ -1177,14 +1186,15 @@ main() {
             MODE="venv"
         else
             while true; do
-                echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}]: "
+                echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}/${BY}4${W}]: "
                 read -n 1 -r < /dev/tty
                 echo
                 case "$REPLY" in
                     1|"") MODE="venv";      break ;;
                     2)    MODE="python39";   break ;;
                     3)    MODE="python314";  break ;;
-                    *)    echo -e "  ${RED}Bitte 1, 2 oder 3 eingeben${W}" ;;
+                    4)    MODE="patches";    break ;;
+                    *)    echo -e "  ${RED}Bitte 1, 2, 3 oder 4 eingeben${W}" ;;
                 esac
             done
         fi
@@ -1195,8 +1205,38 @@ main() {
         venv)       echo -e "  ${BG}Ausgewählt: Option 1 — System-Python + venv${W}" ;;
         python39)   echo -e "  ${BY}Ausgewählt: Option 2 — Python 3.9.25 kompilieren (original-getreu)${W}" ;;
         python314)  echo -e "  ${CY}Ausgewählt: Option 3 — Python 3.14.4 kompilieren + venv${W}" ;;
+        patches)    echo -e "  ${BY}Ausgewählt: Option 4 — Feature-Patches verwalten${W}" ;;
     esac
     echo ""
+
+    # Option 4: Nur Patch-Verwaltung
+    if [ "$MODE" = "patches" ]; then
+        if [ ! -d "$OPENWB_DIR" ]; then
+            log_error "OpenWB ist noch nicht installiert! Bitte zuerst Option 1, 2 oder 3 ausführen."
+            exit 1
+        fi
+
+        run_as_openwb_user
+
+        if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
+            cd "/home/$OPENWB_USER/openwb-trixie"
+            PATCHES_SRC_DIR="$(pwd)"
+        elif [ -d "$SCRIPT_DIR/patches" ]; then
+            PATCHES_SRC_DIR="$SCRIPT_DIR"
+        else
+            log "Klone Repository für Patch-Dateien..."
+            cd "/home/$OPENWB_USER"
+            git clone https://github.com/Xerolux/openwb-trixie.git
+            cd openwb-trixie
+            PATCHES_SRC_DIR="$(pwd)"
+        fi
+
+        patches_apply_enabled
+        patches_menu
+        echo ""
+        log_success "Fertig!"
+        exit 0
+    fi
 
     # Als openwb-User ausführen
     run_as_openwb_user
@@ -1279,10 +1319,7 @@ main() {
     do_runtime_patches
     do_post_update_hook
 
-    # Feature-Patches (interaktiv auswählen)
-    if [ "$NONINTERACTIVE" -ne 1 ]; then
-        patches_menu
-    fi
+    # Bereits aktivierte Feature-Patches anwenden (ohne Menü)
     patches_apply_enabled
 
     # Services starten
