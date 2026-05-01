@@ -199,6 +199,7 @@ run_as_openwb_user() {
             ;;
     esac
     chmod a+r "$tmp"
+    trap 'rm -f "$tmp"' EXIT
     exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
 }
 
@@ -281,9 +282,66 @@ configure_php() {
 }
 
 ensure_mosquitto_local_unit() {
-    if [ ! -f "/etc/init.d/mosquitto_local" ] || [ -f "/etc/systemd/system/mosquitto_local.service" ]; then
+    if [ -f "/etc/systemd/system/mosquitto_local.service" ]; then
         return 0
     fi
+
+    if [ ! -f "/etc/init.d/mosquitto_local" ]; then
+        log "Erstelle mosquitto_local Init-Script..."
+        sudo tee /etc/init.d/mosquitto_local > /dev/null <<'INITEOF'
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          mosquitto_local
+# Required-Start:    $network $remote_fs
+# Required-Stop:     $network $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Description:       Mosquitto Local Instance for openWB
+### END INIT INFO
+PIDFILE=/run/mosquitto_local.pid
+CONF=/etc/mosquitto/mosquitto_local.conf
+
+start() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "mosquitto_local already running"
+        return 0
+    fi
+    mkdir -p /var/log/openWB
+    mosquitto -c "$CONF" -d -p 1885
+    pgrep -f "mosquitto.*-p 1885" > "$PIDFILE" 2>/dev/null || true
+}
+
+stop() {
+    if [ -f "$PIDFILE" ]; then
+        kill "$(cat "$PIDFILE")" 2>/dev/null || true
+        rm -f "$PIDFILE"
+    fi
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+case "$1" in
+    start)   start   ;;
+    stop)    stop    ;;
+    restart) restart ;;
+    *)       echo "Usage: $0 {start|stop|restart}" ;;
+esac
+INITEOF
+        sudo chmod +x /etc/init.d/mosquitto_local
+    fi
+
+    if [ ! -f "/etc/mosquitto/mosquitto_local.conf" ]; then
+        sudo tee /etc/mosquitto/mosquitto_local.conf > /dev/null <<'CONFEOF'
+listener 1885 127.0.0.1
+allow_anonymous true
+max_keepalive 600
+CONFEOF
+    fi
+
     log "Erstelle mosquitto_local systemd Unit..."
     sudo tee /etc/systemd/system/mosquitto_local.service > /dev/null <<'EOF'
 [Unit]
@@ -645,7 +703,6 @@ _compile() {
     fi
     log "Kompiliere mit $jobs Jobs (RAM: ${available_ram:-?}GB, Cores: $cpu_cores)..."
     make -j"$jobs"
-    make test || log_warning "Einige Tests fehlgeschlagen (kann ignoriert werden)"
 }
 
 # ============================================================================
@@ -808,56 +865,54 @@ do_post_update_hook() {
 do_final_check() {
     log_step "Überprüfung"
 
-    echo ""
-    echo "┌─────────────────────────────────────────────────────┐"
-    echo "│        OpenWB Trixie - Installation abgeschlossen    │"
-    echo "├─────────────────────────────────────────────────────┤"
+    local BOLD='\033[1m' DIM='\033[2m' W='\033[0m'
+    local GR='\033[0;32m' BG='\033[1;32m' BB='\033[1;34m'
+    local BY='\033[1;33m' RED='\033[0;31m' CY='\033[0;36m'
 
-    # Debian
+    echo ""
+    echo -e "  ${BB}┌─────────────────────────────────────────────────────────┐${W}"
+    echo -e "  ${BB}│${W}       ${BG}OpenWB Trixie — Installation abgeschlossen${W}          ${BB}│${W}"
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────┤${W}"
+
     local deb_ver
     deb_ver=$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-${VERSION:-?}}" || echo "?")
-    printf "│ %-22s %28s │\n" "Debian" "$deb_ver"
+    echo -e "  ${BB}│${W}  ${BOLD}Debian:${W}       $deb_ver"
+    echo -e "  ${BB}│${W}  ${BOLD}Architektur:${W}  $(uname -m)$(is_raspberry_pi && echo " ${CY}(Raspberry Pi)${W}" || true)"
 
-    # Python
     case "$MODE" in
         venv|python314)
-            printf "│ %-22s %28s │\n" "Python (System)" "$(python3 --version 2>&1 | awk '{print $2}')"
-            printf "│ %-22s %28s │\n" "Python (venv)" "$($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')"
-            printf "│ %-22s %28s │\n" "venv" "$VENV_DIR"
+            echo -e "  ${BB}│${W}  ${BOLD}Python:${W}       ${GR}$(python3 --version 2>&1 | awk '{print $2}')${W} (System)"
+            echo -e "  ${BB}│${W}  ${BOLD}venv:${W}         ${BG}$($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')${W} ($VENV_DIR)"
             ;;
         python39)
-            printf "│ %-22s %28s │\n" "Python" "$(python3 --version 2>&1 | awk '{print $2}')"
+            echo -e "  ${BB}│${W}  ${BOLD}Python:${W}       ${GR}$(python3 --version 2>&1 | awk '{print $2}')${W} (kompiliert)"
             ;;
     esac
 
-    # Platform
-    printf "│ %-22s %28s │\n" "Architektur" "$(uname -m)"
-    printf "│ %-22s %28s │\n" "Platform" "$(is_raspberry_pi && echo 'Raspberry Pi' || echo 'Generic')"
+    echo -e "  ${BB}│${W}  ${BOLD}Post-Update:${W}  ${GR}installiert${W}"
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Services:${W}"
 
-    # Services
-    printf "│ %-22s %28s │\n" "Post-Update Hook" "installiert"
-
-    echo "├─────────────────────────────────────────────────────┤"
-    echo "│ Services:                                            │"
     for svc in mosquitto mosquitto_local openwb2 openwb-simpleAPI apache2; do
         local status
         status=$(systemctl is-active "$svc" 2>/dev/null || echo "?")
         if [ "$status" = "active" ]; then
-            printf "│   %-36s %12s │\n" "$svc" "OK"
+            echo -e "  ${BB}│${W}    ${GR}OK${W}    $svc"
         else
-            printf "│   %-36s %12s │\n" "$svc" "$status"
+            echo -e "  ${BB}│${W}    ${RED}$status${W}  $svc"
         fi
     done
 
-    echo "├─────────────────────────────────────────────────────┤"
-    echo "│ Web-Interface: http://$(hostname -I 2>/dev/null | awk '{print $1}')"
-    echo "│                                                      │"
-    echo "│ Nächste Schritte:                                    │"
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Web-Interface:${W}  ${CY}http://$(hostname -I 2>/dev/null | awk '{print $1}')${W}"
+    echo -e "  ${BB}│${W}"
     if is_arm_arch && is_raspberry_pi; then
-        echo "│   1. sudo reboot (GPIO-Konfiguration aktivieren)    │"
+        echo -e "  ${BB}│${W}  ${BY}WICHTIG: Bitte zuerst rebooten fuer GPIO-Konfiguration!${W}"
+        echo -e "  ${BB}│${W}           ${BOLD}sudo reboot${W}"
+        echo -e "  ${BB}│${W}"
     fi
-    echo "│   2. Im Browser öffnen und OpenWB konfigurieren     │"
-    echo "└─────────────────────────────────────────────────────┘"
+    echo -e "  ${BB}│${W}  Danach: Im Browser oeffnen und OpenWB konfigurieren"
+    echo -e "  ${BB}└─────────────────────────────────────────────────────────┘${W}"
     echo ""
 }
 
