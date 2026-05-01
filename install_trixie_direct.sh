@@ -296,6 +296,32 @@ ensure_openwb_webroot() {
     sudo chown root:root /var/www /var/www/html 2>/dev/null || true
 }
 
+run_openwb_core_installer_noninteractive() {
+    local tmp_dir install_script packages_script
+    tmp_dir=$(mktemp -d)
+    install_script="$tmp_dir/openwb-install.sh"
+    packages_script="$tmp_dir/install_packages.sh"
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    curl -fsSL https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh -o "$install_script"
+    curl -fsSL https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh -o "$packages_script"
+
+    # Upstream-Skripte robust machen:
+    # 1) Paketinstallation strikt non-interaktiv
+    # 2) /var/www/html/openWB mit mkdir -p anlegen
+    sed -i \
+        -e 's|sudo apt-get -q update|sudo DEBIAN_FRONTEND=noninteractive apt-get -q update|g' \
+        -e 's|sudo apt-get -q -y install|sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install|g' \
+        "$packages_script"
+
+    sed -i \
+        -e "s|curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s|bash \"$packages_script\"|g" \
+        -e 's|mkdir "$OPENWBBASEDIR"|mkdir -p "$OPENWBBASEDIR"|g' \
+        "$install_script"
+
+    sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
+}
+
 echo "====================================================================="
 echo "   OpenWB Installation für Debian Trixie"
 echo "====================================================================="
@@ -479,7 +505,7 @@ if [ -f "/var/www/html/openWB/openwb.sh" ] || [ -f "/home/openwb/openwb/openwb.s
 else
     log "OpenWB wird installiert..."
     ensure_openwb_webroot
-    curl -fsSL https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh | sudo DEBIAN_FRONTEND=noninteractive bash
+    run_openwb_core_installer_noninteractive
     log_success "OpenWB erfolgreich installiert"
 fi
 
