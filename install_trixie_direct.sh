@@ -189,6 +189,8 @@ configure_openwb_venv_runtime() {
     if [ -f "$atreboot_file" ]; then
         log "Passe atreboot.sh auf venv-pip an (PEP668-sicher)..."
         sudo sed -i "s#\\([^[:alnum:]_/.-]\\|^\\)pip3 install -r#\\1$venv_pip install -r#g" "$atreboot_file"
+        sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+--only-binary@\1/opt/openwb-venv/bin/pip3 install --only-binary@g' "$atreboot_file"
+        sudo sed -i 's|pip uninstall urllib3 -y|/opt/openwb-venv/bin/pip3 uninstall urllib3 -y|g' "$atreboot_file"
     else
         log_warning "atreboot.sh nicht gefunden: $atreboot_file"
     fi
@@ -353,6 +355,39 @@ prepare_openwb_requirements_for_py313() {
     fi
 }
 
+install_py313_compat_shim() {
+    local py_version
+    py_version=$(/opt/openwb-venv/bin/python3 -c 'import sys; print(sys.version_info.major, sys.version_info.minor)' 2>/dev/null || echo "0 0")
+    local py_major py_minor
+    read -r py_major py_minor <<< "$py_version"
+
+    if [ "$py_major" -lt 3 ] || [ "$py_minor" -lt 11 ]; then
+        log "Python ${py_major}.${py_minor} - asyncio.coroutine Shim nicht benötigt"
+        return 0
+    fi
+
+    local shim_dir="/opt/openwb-venv/lib/python${py_major}.${py_minor}/site-packages"
+    if [ -f "$shim_dir/openwb_py313_compat.py" ]; then
+        log "asyncio.coroutine Shim bereits installiert"
+        return 0
+    fi
+
+    log "Installiere asyncio.coroutine Kompatibilitäts-Shim (Python ${py_major}.${py_minor})..."
+    sudo mkdir -p "$shim_dir"
+    sudo tee "$shim_dir/openwb_py313_compat.py" > /dev/null << 'PYEOF'
+import asyncio
+import types
+import sys
+if sys.version_info >= (3, 11) and not hasattr(asyncio, "coroutine"):
+    def _coroutine_compat(func):
+        return types.coroutine(func)
+    asyncio.coroutine = _coroutine_compat
+PYEOF
+    echo "import openwb_py313_compat" | sudo tee "$shim_dir/openwb_py313_compat.pth" > /dev/null
+    sudo chown openwb:openwb "$shim_dir/openwb_py313_compat.py" "$shim_dir/openwb_py313_compat.pth" 2>/dev/null || true
+    log_success "asyncio.coroutine Shim installiert (Python 3.11+ Kompatibilität)"
+}
+
 patch_openwb_runtime_scripts() {
     local openwb_dir="$1"
     local atreboot_file="$openwb_dir/runs/atreboot.sh"
@@ -361,6 +396,8 @@ patch_openwb_runtime_scripts() {
     if [ -f "$atreboot_file" ]; then
         log "Patch: atreboot.sh auf venv-pip (PEP668-sicher)..."
         sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$atreboot_file"
+        sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+--only-binary@\1/opt/openwb-venv/bin/pip3 install --only-binary@g' "$atreboot_file"
+        sudo sed -i 's|pip uninstall urllib3 -y|/opt/openwb-venv/bin/pip3 uninstall urllib3 -y|g' "$atreboot_file"
         sudo chmod +x "$atreboot_file"
     fi
 
@@ -368,6 +405,8 @@ patch_openwb_runtime_scripts() {
         log "Patch: openwb-simpleAPI.service auf venv-Python..."
         sudo sed -i -E 's@^ExecStart=.*simpleAPI_mqtt\.py$@ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py@g' "$simpleapi_service_file"
     fi
+
+    install_py313_compat_shim
 }
 
 cleanup_venv_artifacts() {

@@ -119,6 +119,8 @@ configure_openwb_venv_runtime() {
     if [ -f "$atreboot_file" ]; then
         log "Passe atreboot.sh auf venv-pip an (PEP668-sicher)..."
         sudo sed -i "s#\\([^[:alnum:]_/.-]\\|^\\)pip3 install -r#\\1$venv_pip install -r#g" "$atreboot_file"
+        sudo sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+--only-binary@\1/opt/openwb-venv/bin/pip3 install --only-binary@g' "$atreboot_file"
+        sudo sed -i 's|pip uninstall urllib3 -y|/opt/openwb-venv/bin/pip3 uninstall urllib3 -y|g' "$atreboot_file"
     fi
 
     if [ -f "$remote_service_file" ]; then
@@ -373,6 +375,32 @@ main() {
             done
             if [ -n "$OPENWB_RUNTIME_DIR" ]; then
                 configure_openwb_venv_runtime "$OPENWB_RUNTIME_DIR"
+            fi
+
+            # asyncio.coroutine Kompatibilitäts-Shim für Python 3.11+
+            if [ -x /opt/openwb-venv/bin/python3 ]; then
+                PY_VER=$(/opt/openwb-venv/bin/python3 -c 'import sys; v=sys.version_info; print(f"{v.major}.{v.minor}")' 2>/dev/null || echo "0.0")
+                PY_MAJOR=$(echo "$PY_VER" | cut -d. -f1)
+                PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
+                if [ "$PY_MAJOR" -ge 3 ] && [ "$PY_MINOR" -ge 11 ]; then
+                    SHIM_DIR="/opt/openwb-venv/lib/python${PY_MAJOR}.${PY_MINOR}/site-packages"
+                    if [ ! -f "$SHIM_DIR/openwb_py313_compat.py" ]; then
+                        log "Installiere asyncio.coroutine Shim für Python ${PY_MAJOR}.${PY_MINOR}..."
+                        sudo mkdir -p "$SHIM_DIR"
+                        sudo tee "$SHIM_DIR/openwb_py313_compat.py" > /dev/null << 'PYEOF'
+import asyncio
+import types
+import sys
+if sys.version_info >= (3, 11) and not hasattr(asyncio, "coroutine"):
+    def _coroutine_compat(func):
+        return types.coroutine(func)
+    asyncio.coroutine = _coroutine_compat
+PYEOF
+                        echo "import openwb_py313_compat" | sudo tee "$SHIM_DIR/openwb_py313_compat.pth" > /dev/null
+                        sudo chown openwb:openwb "$SHIM_DIR/openwb_py313_compat.py" "$SHIM_DIR/openwb_py313_compat.pth" 2>/dev/null || true
+                        log_success "asyncio.coroutine Shim installiert"
+                    fi
+                fi
             fi
         fi
     fi
