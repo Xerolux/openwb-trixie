@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.6"
+INSTALLER_VERSION="2026-05-01.7"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -297,6 +297,32 @@ ensure_openwb_webroot() {
     sudo chown root:root /var/www /var/www/html 2>/dev/null || true
 }
 
+recover_dpkg_if_needed() {
+    if [ -f /var/lib/dpkg/lock-frontend ] || [ -f /var/lib/dpkg/lock ]; then
+        true
+    fi
+    if sudo test -f /var/lib/dpkg/updates/0000 || sudo test -n "$(sudo find /var/lib/dpkg/updates -maxdepth 1 -type f 2>/dev/null)"; then
+        log_warning "Unvollständiger dpkg-Status erkannt, repariere mit dpkg --configure -a..."
+        sudo DEBIAN_FRONTEND=noninteractive dpkg --configure -a
+    fi
+}
+
+ensure_free_space_mb() {
+    local min_mb="$1"
+    local avail_mb
+    avail_mb=$(df -Pm / | awk 'NR==2 {print $4}')
+    if [ -z "$avail_mb" ]; then
+        log_warning "Konnte freien Speicher nicht ermitteln"
+        return 0
+    fi
+    if [ "$avail_mb" -lt "$min_mb" ]; then
+        log_error "Zu wenig freier Speicher auf / (${avail_mb} MB, benötigt mindestens ${min_mb} MB)"
+        log_error "Bitte Platz schaffen (z. B. apt clean, alte Logs/Downloads löschen) und erneut starten."
+        exit 1
+    fi
+    log "Freier Speicher auf /: ${avail_mb} MB"
+}
+
 run_openwb_core_installer_noninteractive() {
     local tmp_dir install_script packages_script
     tmp_dir=$(mktemp -d)
@@ -318,7 +344,11 @@ run_openwb_core_installer_noninteractive() {
     sed -i \
         -e "s@curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s@bash \"$packages_script\"@g" \
         -e 's@mkdir "$OPENWBBASEDIR"@mkdir -p "$OPENWBBASEDIR"@g' \
+        -e 's@sudo -u "\$OPENWB_USER" pip install -r "\${OPENWBBASEDIR}/requirements.txt"@/opt/openwb-venv/bin/pip3 install -r "\${OPENWBBASEDIR}/requirements.txt"@g' \
         "$install_script"
+
+    # Fehler im Upstream-Installer hart stoppen, statt mit kaputtem Zustand weiterzulaufen
+    sed -i '2i set -Eeuo pipefail' "$install_script"
 
     sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
 }
@@ -370,10 +400,12 @@ fi
 
 # Schritt 0: Deutsche Standards setzen
 log "=== Schritt 0: Deutsche Standards setzen (Zeitzone/Keyboard/UTF-8) ==="
+recover_dpkg_if_needed
 configure_german_defaults
 
 # Schritt 1: System aktualisieren
 log "=== Schritt 1: System aktualisieren ==="
+recover_dpkg_if_needed
 sudo apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
 
@@ -506,6 +538,7 @@ if [ -f "/var/www/html/openWB/openwb.sh" ] || [ -f "/home/openwb/openwb/openwb.s
     log "OpenWB bereits installiert, überspringe..."
 else
     log "OpenWB wird installiert..."
+    ensure_free_space_mb 2500
     ensure_openwb_webroot
     run_openwb_core_installer_noninteractive
     log_success "OpenWB erfolgreich installiert"
