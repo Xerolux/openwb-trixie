@@ -74,6 +74,50 @@ on_error() {
 
 trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
+# Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
+OPENWB_USER="openwb"
+OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
+
+ensure_openwb_user() {
+    if id "$OPENWB_USER" >/dev/null 2>&1; then
+        log "Benutzer '$OPENWB_USER' existiert bereits"
+    else
+        log "Lege Benutzer '$OPENWB_USER' an..."
+        sudo useradd -m -s /bin/bash "$OPENWB_USER"
+        log_success "Benutzer '$OPENWB_USER' wurde angelegt"
+    fi
+
+    if id -nG "$OPENWB_USER" | grep -qw sudo; then
+        log "Benutzer '$OPENWB_USER' ist bereits in der Gruppe sudo"
+    else
+        log "Füge Benutzer '$OPENWB_USER' zur Gruppe sudo hinzu..."
+        sudo usermod -aG sudo "$OPENWB_USER"
+        log_success "Benutzer '$OPENWB_USER' wurde zur Gruppe sudo hinzugefügt"
+    fi
+}
+
+switch_to_openwb_if_needed() {
+    if [ "${OPENWB_RUN_AS_USER:-0}" = "1" ]; then
+        return 0
+    fi
+
+    ensure_openwb_user
+
+    if [ "$(id -un)" = "$OPENWB_USER" ]; then
+        export OPENWB_RUN_AS_USER=1
+        return 0
+    fi
+
+    log "Starte Installer als Benutzer '$OPENWB_USER' neu..."
+    if [ -f "$0" ] && [ -r "$0" ]; then
+        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 bash "$0" "$@"
+    fi
+
+    log_warning "Installer läuft vermutlich via Pipe (curl | bash), nutze Fallback über Raw-URL"
+    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 OPENWB_TRIXIE_SCRIPT_URL="$OPENWB_TRIXIE_SCRIPT_URL" \
+        bash -lc 'curl -fsSL "$OPENWB_TRIXIE_SCRIPT_URL" | bash'
+}
+
 # PHP-Version dynamisch ermitteln
 detect_php_version() {
     local v
@@ -202,6 +246,8 @@ echo "  ✓ Nutzt modernes Debian Trixie Python (3.12+)"
 echo "  ✓ Isolierte Paket-Installation (venv)"
 echo "  ✓ Überlebt OpenWB-Updates automatisch"
 echo ""
+
+switch_to_openwb_if_needed "$@"
 
 # Prüfe ob bereits Trixie läuft
 if ! is_trixie; then
