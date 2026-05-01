@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.9"
+INSTALLER_VERSION="2026-05-01.10"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -397,10 +397,16 @@ fi
 
 log_success "Debian Trixie erkannt"
 
-read -p "Möchtest du fortfahren? (j/N): " -n 1 -r < /dev/tty
+# Schritt 1: System aktualisieren
+log "=== Schritt 1: System aktualisieren ==="
+recover_dpkg_if_needed
+sudo apt update
+sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
+
+read -p "System ist aktualisiert. Mit den restlichen Schritten fortfahren? (j/N): " -n 1 -r < /dev/tty
 echo
 if [[ ! "$REPLY" =~ ^[Jj]$ ]]; then
-    echo "Installation abgebrochen."
+    echo "Installation nach Systemupdate abgebrochen."
     exit 1
 fi
 
@@ -408,12 +414,6 @@ fi
 log "=== Schritt 0: Deutsche Standards setzen (Zeitzone/Keyboard/UTF-8) ==="
 recover_dpkg_if_needed
 configure_german_defaults
-
-# Schritt 1: System aktualisieren
-log "=== Schritt 1: System aktualisieren ==="
-recover_dpkg_if_needed
-sudo apt update
-sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
 
 # Schritt 2: Build-Abhängigkeiten installieren
 log "=== Schritt 2: Build-Abhängigkeiten installieren ==="
