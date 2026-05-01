@@ -846,10 +846,14 @@ do_final_check() {
 # ============================================================================
 main() {
     echo ""
-    echo "╔═══════════════════════════════════════════════════════╗"
-    echo "║       OpenWB Trixie Installer v$INSTALLER_VERSION          ║"
-    echo "║       Für FRISCHE Debian Trixie Installationen       ║"
-    echo "╚═══════════════════════════════════════════════════════╝"
+    echo "  ╔═══════════════════════════════════════════════════════════╗"
+    echo "  ║                                                           ║"
+    echo "  ║              OpenWB  ·  Trixie Installer                 ║"
+    echo "  ║                    v$INSTALLER_VERSION                        ║"
+    echo "  ║                                                           ║"
+    echo "  ║         Für FRISCHE Debian Trixie Installationen         ║"
+    echo "  ║                                                           ║"
+    echo "  ╚═══════════════════════════════════════════════════════════╝"
     echo ""
 
     # Trixie prüfen
@@ -860,43 +864,49 @@ main() {
         echo "Download: https://www.debian.org/devel/"
         exit 1
     fi
-    log_success "Debian Trixie erkannt"
+    log_success "Debian Trixie erkannt ($(cat /etc/debian_version 2>/dev/null || echo "?"))"
+    log "Architektur: $(uname -m)$(is_raspberry_pi && echo ' (Raspberry Pi)' || true)"
 
     # Modus-Auswahl
     if [ -z "$MODE" ]; then
+        local sys_py
+        sys_py=$(python3 --version 2>&1 | awk '{print $2}')
         echo ""
-        echo "Wie soll Python installiert werden?"
-        echo ""
-        echo "  [1] System-Python + venv (EMPFOHLEN)"
-        echo "      - Nutzt das Trixie System-Python (3.12/3.13/3.14)"
-        echo "      - Pakete isoliert im Virtual Environment"
-        echo "      - Schnell: ~10-15 Minuten"
-        echo "      - Update-resistent (automatischer Post-Update Hook)"
-        echo ""
-        echo "  [2] Python 3.9.25 kompilieren (ORIGINAL-GETREU)"
-        echo "      - Kompiliert Python 3.9.25 aus Quellcode"
-        echo "      - Keine Anpassungen am OpenWB-Code nötig"
-        echo "      - Überschreibt das System-Python"
-        echo "      - Langsam: ~30-60 Minuten"
-        echo ""
-        echo "  [3] Python 3.14.4 kompilieren + venv (NEUESTES PYTHON)"
-        echo "      - Kompiliert Python 3.14.4 als Zusatz-Installation"
-        echo "      - System-Python bleibt unverändert"
-        echo "      - venv nutzt das neu kompilierte Python"
-        echo "      - Langsam: ~30-60 Minuten"
+        echo "  ┌─────────────────────────────────────────────────────────┐"
+        echo "  │              Python-Installationsmodus wählen           │"
+        echo "  ├─────────────────────────────────────────────────────────┤"
+        echo "  │                                                         │"
+        echo "  │   [1]  System-Python + venv              EMPFOHLEN      │"
+        echo "  │        Aktuelles System-Python ($sys_py)"
+        echo "  │        Pakete isoliert im Virtual Environment           │"
+        echo "  │        System bleibt unangetastet                       │"
+        echo "  │        Dauer: ca. 10-15 Minuten                         │"
+        echo "  │                                                         │"
+        echo "  │   [2]  Python 3.9.25 kompilieren         ORIGINAL       │"
+        echo "  │        Kompiliert aus Quellcode, ersetzt System-Python  │"
+        echo "  │        Keine Anpassungen am OpenWB-Code nötig           │"
+        echo "  │        Dauer: ca. 30-60 Minuten                         │"
+        echo "  │                                                         │"
+        echo "  │   [3]  Python 3.14.4 kompilieren + venv  NEUSTE         │"
+        echo "  │        Kompiliert neuestes Python als Zusatz-Install.   │"
+        echo "  │        System-Python bleibt unverändert                 │"
+        echo "  │        venv nutzt das neu kompilierte Python 3.14       │"
+        echo "  │        Dauer: ca. 30-60 Minuten                         │"
+        echo "  │                                                         │"
+        echo "  └─────────────────────────────────────────────────────────┘"
         echo ""
         if [ "$NONINTERACTIVE" -eq 1 ]; then
-            log_warning "Non-interactive Modus: wähle venv"
+            log_warning "Non-interactive Modus: wähle Option 1"
             MODE="venv"
         else
             while true; do
-                read -p "Wahl [1/2/3]: " -n 1 -r < /dev/tty
+                read -p "  Deine Wahl [1/2/3]: " -n 1 -r < /dev/tty
                 echo
                 case "$REPLY" in
                     1|"") MODE="venv";      break ;;
                     2)    MODE="python39";   break ;;
                     3)    MODE="python314";  break ;;
-                    *)    echo "Bitte 1, 2 oder 3 eingeben" ;;
+                    *)    echo "  Bitte 1, 2 oder 3 eingeben" ;;
                 esac
             done
         fi
@@ -904,9 +914,9 @@ main() {
 
     echo ""
     case "$MODE" in
-        venv)       log_success "Modus: System-Python + venv (schnell, modern)" ;;
-        python39)   log_success "Modus: Python 3.9.25 kompilieren (original-getreu)" ;;
-        python314)  log_success "Modus: Python 3.14.4 kompilieren + venv (neuestes Python)" ;;
+        venv)       log_success "Option 1: System-Python + venv" ;;
+        python39)   log_success "Option 2: Python 3.9.25 kompilieren (original-getreu)" ;;
+        python314)  log_success "Option 3: Python 3.14.4 kompilieren + venv" ;;
     esac
     echo ""
 
