@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="46ebde8"
+BUILD_ID="7ce29ef"
 
 # ============================================================================
 # Argumente parsen
@@ -96,6 +96,8 @@ VENV_DIR="/opt/openwb-venv"
 OPENWB_DIR="/var/www/html/openWB"
 PATCH_DIR="/opt/openwb-patches"
 PATCH_CONF="$PATCH_DIR/enabled.conf"
+TOOL_DIR="/opt/openwb-tools"
+TOOL_CONF="$TOOL_DIR/enabled.conf"
 if _src_dir="$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" && _tgt="$(cd "$_src_dir" 2>/dev/null && pwd)"; then
     SCRIPT_DIR="$_tgt"
 else
@@ -971,8 +973,9 @@ whiptail_main_menu() {
         "2" "Python 3.9.25 kompilieren    ORIGINAL (30-60 Min)" \
         "3" "Python 3.14.4 + venv         NEUESTE (30-60 Min)" \
         "4" "Feature-Patches verwalten    installieren / entfernen" \
+        "5" "Tools installieren           modbus-proxy u.a." \
         ""  "" \
-        "5" "Beenden" \
+        "6" "Beenden" \
         3>&1 1>&2 2>&3)
 
     local rc=$?
@@ -983,7 +986,8 @@ whiptail_main_menu() {
         2)  echo "python39" ;;
         3)  echo "python314" ;;
         4)  echo "patches" ;;
-        5)  echo "quit" ;;
+        5)  echo "tools" ;;
+        6)  echo "quit" ;;
         "") echo "venv" ;;
         *)  echo "quit" ;;
     esac
@@ -1011,9 +1015,10 @@ text_main_menu() {
     echo "  │        Dauer: ca. 30-60 Minuten                          │"
     echo "  │                                                          │"
     echo "  │   [4]  Feature-Patches verwalten                         │"
-    echo "  │        Patches installieren / entfernen                  │"
     echo "  │                                                          │"
-    echo "  │   [5]  Beenden                            build:${BUILD_ID} │"
+    echo "  │   [5]  Tools installieren (modbus-proxy u.a.)            │"
+    echo "  │                                                          │"
+    echo "  │   [6]  Beenden                            build:${BUILD_ID} │"
     echo "  │                                                          │"
     echo "  └──────────────────────────────────────────────────────────┘"
     echo ""
@@ -1026,8 +1031,9 @@ text_main_menu() {
             2)    echo "python39"; return ;;
             3)    echo "python314"; return ;;
             4)    echo "patches"; return ;;
-            5|q|Q) echo "quit"; return ;;
-            *)    echo "  Bitte 1-5 eingeben" ;;
+            5)    echo "tools"; return ;;
+            6|q|Q) echo "quit"; return ;;
+            *)    echo "  Bitte 1-6 eingeben" ;;
         esac
     done
 }
@@ -1219,6 +1225,161 @@ patches_menu() {
 }
 
 # ============================================================================
+# Tools (modular, installierbar/entfernbar)
+# ============================================================================
+TOOLS_SRC_DIR=""
+
+tools_discover() {
+    local tdir="$1"
+    local tools=()
+    for f in "$tdir"/*.sh; do
+        [ -f "$f" ] || continue
+        tools+=("$(basename "$f")")
+    done
+    printf '%s\n' "${tools[@]}" | sort
+}
+
+tool_get_field() {
+    local file="$1" field="$2"
+    grep -m1 "^# $field:" "$file" 2>/dev/null | sed "s/^# $field: *//"
+}
+
+tools_load_enabled() {
+    if [ ! -d "$TOOL_DIR" ]; then
+        mkdir -p "$TOOL_DIR"
+        chown "$OPENWB_USER:$OPENWB_USER" "$TOOL_DIR" 2>/dev/null || true
+    fi
+    [ -f "$TOOL_CONF" ] || touch "$TOOL_CONF"
+}
+
+tool_is_enabled() {
+    local tid="$1"
+    grep -qx "$tid" "$TOOL_CONF" 2>/dev/null
+}
+
+tool_enable() {
+    local tid="$1"
+    tools_load_enabled
+    if ! tool_is_enabled "$tid"; then
+        echo "$tid" >> "$TOOL_CONF"
+    fi
+}
+
+tool_disable() {
+    local tid="$1"
+    [ -f "$TOOL_CONF" ] || return
+    sed -i "/^${tid}$/d" "$TOOL_CONF"
+}
+
+whiptail_tools_menu() {
+    if [ ! -d "$TOOLS_SRC_DIR/tools" ]; then
+        whiptail --title "Fehler" --msgbox "tools/ Verzeichnis nicht gefunden." 10 50
+        return 1
+    fi
+
+    tools_load_enabled
+
+    local args=()
+    local tool_files=()
+
+    while IFS= read -r tfile; do
+        [ -z "$tfile" ] && continue
+        local full="$TOOLS_SRC_DIR/tools/$tfile"
+        local tid name desc
+        tid=$(tool_get_field "$full" "Id")
+        name=$(tool_get_field "$full" "Name")
+        desc=$(tool_get_field "$full" "Desc")
+        [ -z "$tid" ] && continue
+
+        tool_files+=("$tid")
+        if tool_is_enabled "$tid"; then
+            args+=("$tid" "$name — $desc" "ON")
+        else
+            args+=("$tid" "$name — $desc" "OFF")
+        fi
+    done <<< "$(tools_discover "$TOOLS_SRC_DIR/tools")"
+
+    if [ ${#args[@]} -eq 0 ]; then
+        whiptail --title "Tools" --msgbox "Keine Tools verfügbar." 10 50
+        return 0
+    fi
+
+    local selected
+    selected=$(whiptail --title "Tools installieren / entfernen" \
+        --checklist "\n[*] = installiert    [ ] = verfügbar\n\nLeertaste zum Auswählen, OK zum Anwenden:" \
+        22 78 ${#tool_files[@]} \
+        "${args[@]}" \
+        3>&1 1>&2 2>&3)
+
+    local rc=$?
+    [ $rc -ne 0 ] && return 0
+
+    local sel_tids=()
+    eval 'for w in '$selected'; do sel_tids+=("$w"); done'
+
+    for tid in "${tool_files[@]}"; do
+        local is_sel=false
+        for st in "${sel_tids[@]}"; do
+            [ "$tid" = "$st" ] && is_sel=true && break
+        done
+
+        local tfile=""
+        for f in "$TOOLS_SRC_DIR"/tools/*.sh; do
+            [ -f "$f" ] || continue
+            if [ "$(tool_get_field "$f" "Id")" = "$tid" ]; then
+                tfile="$f"
+                break
+            fi
+        done
+        [ -z "$tfile" ] && continue
+
+        export OPENWB_DIR VENV_DIR
+        source "$tfile"
+
+        if [ "$is_sel" = true ] && ! tool_is_enabled "$tid"; then
+            if tool_apply; then
+                tool_enable "$tid"
+            fi
+        elif [ "$is_sel" = false ] && tool_is_enabled "$tid"; then
+            if tool_revert; then
+                tool_disable "$tid"
+            fi
+        fi
+    done
+
+    whiptail --title "Fertig" --msgbox "Tool-Änderungen angewendet." 8 40
+}
+
+do_tools_mode() {
+    if [ ! -d "$OPENWB_DIR" ]; then
+        whiptail --title "Fehler" --msgbox "OpenWB ist noch nicht installiert!\nBitte zuerst Option 1, 2 oder 3 ausführen." 10 55
+        return 1
+    fi
+
+    run_as_openwb_user
+
+    if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
+        cd "/home/$OPENWB_USER/openwb-trixie"
+        TOOLS_SRC_DIR="$(pwd)"
+    elif [ -d "$SCRIPT_DIR/tools" ]; then
+        TOOLS_SRC_DIR="$SCRIPT_DIR"
+    else
+        log "Klone Repository für Tools..."
+        cd "/home/$OPENWB_USER"
+        git clone https://github.com/Xerolux/openwb-trixie.git
+        cd openwb-trixie
+        TOOLS_SRC_DIR="$(pwd)"
+    fi
+
+    if [ ! -d "$TOOLS_SRC_DIR/tools" ]; then
+        whiptail --title "Fehler" --msgbox "tools/ nicht gefunden in $TOOLS_SRC_DIR" 10 50
+        return 1
+    fi
+
+    whiptail_tools_menu
+}
+
+# ============================================================================
 # Finale Überprüfung
 # ============================================================================
 do_final_check() {
@@ -1389,6 +1550,10 @@ main() {
                 else
                     patches_menu
                 fi
+                continue
+                ;;
+            tools)
+                do_tools_mode
                 continue
                 ;;
         esac
