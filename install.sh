@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="b76e539"
+BUILD_ID="d4e72dc"
 
 # ============================================================================
 # Argumente parsen
@@ -994,7 +994,7 @@ patches_menu() {
         done <<< "$available"
 
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
-        echo -e "  ${BB}│${W}  ${DIM}[0] Weiter / Fertig${W}                                  ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM}[0] Zurück zum Hauptmenü${W}                                ${BB}│${W}"
         echo -e "  ${BB}│${W}  ${DIM}[r] Patch entfernen${W}                                   ${BB}│${W}"
         echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
         echo ""
@@ -1004,7 +1004,7 @@ patches_menu() {
         echo
 
         case "$REPLY" in
-            0|"") break ;;
+            0|"") return 0 ;;
             r|R)
                 echo -ne "  Patch-Nummer zum ${RED}Entfernen${W}: "
                 read -r num < /dev/tty
@@ -1125,6 +1125,44 @@ do_final_check() {
 # ============================================================================
 # HAUPTPROGRAMM
 # ============================================================================
+do_patches_mode() {
+    if [ ! -d "$OPENWB_DIR" ]; then
+        log_error "OpenWB ist noch nicht installiert! Bitte zuerst Option 1, 2 oder 3 ausführen."
+        return 1
+    fi
+
+    mkdir -p "$PATCH_DIR"
+    chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
+    touch "$PATCH_CONF" 2>/dev/null || true
+    chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
+
+    run_as_openwb_user
+
+    if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
+        cd "/home/$OPENWB_USER/openwb-trixie"
+        log "Aktualisiere Repository..."
+        git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
+        PATCHES_SRC_DIR="$(pwd)"
+    elif [ -d "$SCRIPT_DIR/patches" ]; then
+        PATCHES_SRC_DIR="$SCRIPT_DIR"
+    else
+        log "Klone Repository für Patch-Dateien..."
+        cd "/home/$OPENWB_USER"
+        git clone https://github.com/Xerolux/openwb-trixie.git
+        cd openwb-trixie
+        PATCHES_SRC_DIR="$(pwd)"
+    fi
+
+    if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
+        log_error "patches/ Verzeichnis nicht gefunden in $PATCHES_SRC_DIR"
+        return 1
+    fi
+
+    patches_apply_enabled
+    patches_menu
+    echo ""
+}
+
 main() {
     local BOLD='\033[1m'
     local DIM='\033[2m'
@@ -1155,7 +1193,7 @@ main() {
     log_success "Debian Trixie erkannt (${BOLD}$(cat /etc/debian_version 2>/dev/null || echo "?")${W})"
     log "Architektur: ${BOLD}$(uname -m)${W}$(is_raspberry_pi && echo " ${GR}(Raspberry Pi)${W}" || true)"
 
-    if [ -z "$MODE" ]; then
+    while [ -z "$MODE" ]; do
         local sys_py
         sys_py=$(python3 --version 2>&1 | awk '{print $2}')
 
@@ -1187,75 +1225,40 @@ main() {
         echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
         echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
         echo ""
-        if [ "$NONINTERACTIVE" -eq 1 ]; then
-            log_warning "Non-interactive Modus: wähle Option 1"
-            MODE="venv"
-        else
-            while true; do
-                echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}/${BY}4${W}/${DIM}5${W}]: "
-                read -n 1 -r < /dev/tty
-                echo
-                case "$REPLY" in
-                    1|"") MODE="venv";      break ;;
-                    2)    MODE="python39";   break ;;
-                    3)    MODE="python314";  break ;;
-                    4)    MODE="patches";    break ;;
-                    5|q|Q) echo -e "  ${DIM}Tschüss!${W}"; exit 0 ;;
-                    *)    echo -e "  ${RED}Bitte 1-5 eingeben${W}" ;;
-                esac
-            done
-        fi
-    fi
 
-    echo ""
-    case "$MODE" in
-        venv)       echo -e "  ${BG}Ausgewählt: Option 1 — System-Python + venv${W}" ;;
-        python39)   echo -e "  ${BY}Ausgewählt: Option 2 — Python 3.9.25 kompilieren (original-getreu)${W}" ;;
-        python314)  echo -e "  ${CY}Ausgewählt: Option 3 — Python 3.14.4 kompilieren + venv${W}" ;;
-        patches)    echo -e "  ${BY}Ausgewählt: Option 4 — Feature-Patches verwalten${W}" ;;
-    esac
-    echo ""
+        while true; do
+            echo -ne "  ${BOLD}Deine Wahl${W} [${BG}1${W}/${BY}2${W}/${CY}3${W}/${BY}4${W}/${DIM}5${W}]: "
+            read -n 1 -r < /dev/tty
+            echo
+            case "$REPLY" in
+                1|"") MODE="venv";      break ;;
+                2)    MODE="python39";   break ;;
+                3)    MODE="python314";  break ;;
+                4)    MODE="patches";    break ;;
+                5|q|Q) echo -e "  ${DIM}Tschüss!${W}"; exit 0 ;;
+                *)    echo -e "  ${RED}Bitte 1-5 eingeben${W}" ;;
+            esac
+        done
 
-    # Option 4: Nur Patch-Verwaltung
-    if [ "$MODE" = "patches" ]; then
-        if [ ! -d "$OPENWB_DIR" ]; then
-            log_error "OpenWB ist noch nicht installiert! Bitte zuerst Option 1, 2 oder 3 ausführen."
-            exit 1
-        fi
-
-        mkdir -p "$PATCH_DIR"
-        chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
-        touch "$PATCH_CONF" 2>/dev/null || true
-        chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
-
-        run_as_openwb_user
-
-        if [ -d "/home/$OPENWB_USER/openwb-trixie" ]; then
-            cd "/home/$OPENWB_USER/openwb-trixie"
-            log "Aktualisiere Repository..."
-            git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
-            PATCHES_SRC_DIR="$(pwd)"
-        elif [ -d "$SCRIPT_DIR/patches" ]; then
-            PATCHES_SRC_DIR="$SCRIPT_DIR"
-        else
-            log "Klone Repository für Patch-Dateien..."
-            cd "/home/$OPENWB_USER"
-            git clone https://github.com/Xerolux/openwb-trixie.git
-            cd openwb-trixie
-            PATCHES_SRC_DIR="$(pwd)"
-        fi
-
-        log "Suche Patches in $PATCHES_SRC_DIR/patches ..."
-        if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
-            log_error "patches/ Verzeichnis nicht gefunden in $PATCHES_SRC_DIR"
-            log_error "Bitte prüfe ob das Repository aktuell ist"
-            exit 1
-        fi
-
-        patches_apply_enabled
-        patches_menu
         echo ""
-        log_success "Fertig!"
+        case "$MODE" in
+            venv)       echo -e "  ${BG}Ausgewählt: Option 1 — System-Python + venv${W}" ;;
+            python39)   echo -e "  ${BY}Ausgewählt: Option 2 — Python 3.9.25 kompilieren (original-getreu)${W}" ;;
+            python314)  echo -e "  ${CY}Ausgewählt: Option 3 — Python 3.14.4 kompilieren + venv${W}" ;;
+            patches)    echo -e "  ${BY}Ausgewählt: Option 4 — Feature-Patches verwalten${W}" ;;
+        esac
+        echo ""
+
+        if [ "$MODE" = "patches" ]; then
+            do_patches_mode
+            MODE=""
+        else
+            break
+        fi
+    done
+
+    if [ "$MODE" = "patches" ]; then
+        do_patches_mode
         exit 0
     fi
 
