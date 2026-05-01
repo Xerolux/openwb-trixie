@@ -889,8 +889,9 @@ patch_get_field() {
 }
 
 patches_load_enabled() {
-    mkdir -p "$PATCH_DIR"
-    touch "$PATCH_CONF"
+    sudo mkdir -p "$PATCH_DIR"
+    sudo touch "$PATCH_CONF"
+    sudo chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF"
 }
 
 patch_is_enabled() {
@@ -902,14 +903,14 @@ patch_enable() {
     local pid="$1"
     patches_load_enabled
     if ! patch_is_enabled "$pid"; then
-        echo "$pid" >> "$PATCH_CONF"
+        echo "$pid" | sudo tee -a "$PATCH_CONF" > /dev/null
     fi
 }
 
 patch_disable() {
     local pid="$1"
     [ -f "$PATCH_CONF" ] || return
-    sed -i "/^${pid}$/d" "$PATCH_CONF"
+    sudo sed -i "/^${pid}$/d" "$PATCH_CONF"
 }
 
 patches_apply_enabled() {
