@@ -136,7 +136,7 @@ switch_to_openwb_if_needed() {
 
     log_warning "Installer läuft vermutlich via Pipe (curl | bash), nutze Fallback über Raw-URL"
     exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 OPENWB_TRIXIE_SCRIPT_URL="$OPENWB_TRIXIE_SCRIPT_URL" \
-        bash -lc 'curl -fsSL "$OPENWB_TRIXIE_SCRIPT_URL" | bash'
+        bash -lc 'curl -fsSL "${OPENWB_TRIXIE_SCRIPT_URL}?ts=$(date +%s)" | bash'
 }
 
 # PHP-Version dynamisch ermitteln
