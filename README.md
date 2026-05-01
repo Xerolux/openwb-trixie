@@ -1,139 +1,163 @@
-# OpenWB auf Debian Trixie
+# OpenWB Trixie Installer
 
-Ein Installer für OpenWB auf frischen Debian Trixie Systemen.
+Installiert OpenWB auf frischen Debian Trixie Systemen — mit whiptail-Menü, Feature-Patches und optionalen Tools.
 
 ## Schnellstart
 
 ```bash
-bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh)
 ```
 
-Das Script zeigt ein Menü mit drei Python-Optionen. Alternativ direkt:
+> **Cache-Problem?** GitHub cached raw-Dateien aggressiv. Nutze den Commit-Hash:
+> ```bash
+> curl -fsSL "https://raw.githubusercontent.com/Xerolux/openwb-trixie/COMMIT/install.sh" -o /tmp/inst.sh && bash /tmp/inst.sh
+> ```
+
+## Menü
+
+Beim Start erscheint ein whiptail-Menü mit 6 Optionen:
+
+```
+┌──────────────────────────────────────────────────────┐
+│       OpenWB · Debian Trixie Installer               │
+├──────────────────────────────────────────────────────┤
+│                                                      │
+│  [1] System-Python + venv       EMPFOHLEN            │
+│      Python 3.13 · venv · ~10-15 Min                 │
+│                                                      │
+│  [2] Python 3.9.25 kompilieren  ORIGINAL             │
+│      Ersetzt System-Python · ~30-60 Min              │
+│                                                      │
+│  [3] Python 3.14.4 + venv       NEUESTE              │
+│      Zusatz-Installation · ~30-60 Min                │
+│                                                      │
+│  [4] Feature-Patches verwalten                       │
+│                                                      │
+│  [5] Tools installieren                              │
+│                                                      │
+│  [6] Beenden                                         │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+Optionen 1–3 installieren OpenWB komplett (System-Update → Abhängigkeiten → Python → OpenWB → Patches).\
+Optionen 4 und 5 sind nach der Installation verfügbar und kehren danach ins Menü zurück.
+
+### Non-Interactive
 
 ```bash
-# Option 1: System-Python + venv (empfohlen, ~10-15 Min)
-bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --venv
-
-# Option 2: Python 3.9.25 kompilieren (~30-60 Min)
-bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --python39
-
-# Option 3: Python 3.14.4 kompilieren + venv (~30-60 Min)
-bash <(curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --python314
+# Ohne Menü, direkt installieren:
+bash install.sh --venv              # Option 1
+bash install.sh --python39          # Option 2
+bash install.sh --python314         # Option 3
+bash install.sh --non-interactive   # Option 1 automatisch
 ```
 
-## Voraussetzungen
-
-- Frisches Debian Trixie (kein Bookworm-Upgrade!)
-- SSH-Zugang
-- Internetverbindung
-- ~4 GB freier Speicherplatz
-
-## Die drei Python-Optionen
-
-Beim Start erscheint folgendes Menü:
-
-```
-  ┌─────────────────────────────────────────────────────────┐
-  │              Python-Installationsmodus wählen           │
-  ├─────────────────────────────────────────────────────────┤
-  │                                                         │
-  │   [1]  System-Python + venv              EMPFOHLEN      │
-  │        Aktuelles System-Python (3.13.5)                 │
-  │        Pakete isoliert im Virtual Environment           │
-  │        System bleibt unangetastet                       │
-  │        Dauer: ca. 10-15 Minuten                         │
-  │                                                         │
-  │   [2]  Python 3.9.25 kompilieren         ORIGINAL       │
-  │        Kompiliert aus Quellcode, ersetzt System-Python  │
-  │        Keine Anpassungen am OpenWB-Code nötig           │
-  │        Dauer: ca. 30-60 Minuten                         │
-  │                                                         │
-  │   [3]  Python 3.14.4 kompilieren + venv  NEUSTE         │
-  │        Kompiliert neuestes Python als Zusatz-Install.   │
-  │        System-Python bleibt unverändert                 │
-  │        venv nutzt das neu kompilierte Python 3.14       │
-  │        Dauer: ca. 30-60 Minuten                         │
-  │                                                         │
-  └─────────────────────────────────────────────────────────┘
-```
-
-### Vergleich
+## Python-Optionen im Vergleich
 
 | | Option 1: venv | Option 2: Python 3.9 | Option 3: Python 3.14 |
 |---|---|---|---|
 | **Flag** | `--venv` | `--python39` | `--python314` |
 | **Dauer** | ~10-15 Min | ~30-60 Min | ~30-60 Min |
 | **System-Python** | bleibt wie ist | wird ersetzt | bleibt wie ist |
-| **Python-Version** | System (3.12/3.13/3.14) | 3.9.25 | 3.14.4 |
+| **Python-Version** | System (3.12/3.13) | 3.9.25 | 3.14.4 |
 | **venv** | ja | nein | ja |
 | **Code-Patches nötig** | ja | nein | ja |
-| **Update-resistent** | ja (Post-Update Hook) | ja | ja (Post-Update Hook) |
-| **Empfohlen für** | Standard | Original-Getreue | Neuestes Python |
+| **Update-resistent** | ja | ja | ja |
 
-### Empfehlung
+**Empfehlung:** Option 1 (venv) — schnell, sauber, update-resistent.
 
-- **Option 1** ist die beste Wahl für die meisten Nutzer. Schnell, sauber, update-resistent.
-- **Option 2** nur wenn man exakt das Original-OpenWB-Verhalten ohne jegliche Patches will.
-- **Option 3** für Nutzer die das neueste Python wollen, ohne das System zu verändern.
+## Feature-Patches
 
-## Unterstützte Plattformen
+Update-sichere Patches die nach jedem OpenWB-Update automatisch reapplied werden.
 
-| Plattform | Getestet | Status |
-|-----------|----------|--------|
-| x86_64 (Proxmox, PC) | ja | Funktioniert |
-| ARM64 (RPi 4/5 64-bit) | ja | Funktioniert |
-| ARM32 (RPi 3/Zero 32-bit) | Logik geprüft | Funktioniert |
-| Proxmox LXC/VM | ja | Funktioniert |
+| Patch | Beschreibung | Plattform |
+|-------|-------------|-----------|
+| **Sekundäre Wallboxen immer updaten** | Entfernt Branch-Prüfung beim Update sek. Wallboxen | Alle |
+| **Kein Reboot nach Update** | Ersetzt `reboot` durch Service-Neustart | Alle |
+| **Log-Rotation** | logrotate für OpenWB Logs (3 Tage, max 10MB) | Alle |
+| **Swap einrichten** | Pi: rpi-swap (zram), andere: 2GB Swap-Datei | ARM |
+| **SD-Kartenschutz** | tmpfs für /var/log, noatime, journald volatile | ARM |
+| **Stromspar-Modus** | WiFi/BT/HDMI aus, CPU ondemand | Raspberry Pi |
+| **Pi Beta-Repos** | Aktiviert RPi Beta/Test-Repositories | Raspberry Pi |
 
-GPIO/Raspberry-Pi-spezifische Pakete werden automatisch nur auf echter Hardware installiert.
+Patches werden über Menü-Option 4 verwaltet (installieren/entfernen).\
+Aktivierte Patches werden in `/opt/openwb-patches/enabled.conf` gespeichert.
 
-## Was das Script macht
+## Tools
 
-1. System aktualisieren
-2. Deutsche Standards setzen (Zeitzone/Locale/Tastatur)
-3. Abhängigkeiten installieren
+Optionale Zusatz-Tools die als systemd-Services installiert werden.
+
+| Tool | Beschreibung |
+|------|-------------|
+| **Modbus TCP Proxy** | Proxy für Modbus TCP Geräte, erlaubt mehreren Clients Zugriff |
+
+Konfiguration nach der Installation unter `/etc/modbus-proxy/config.yaml`.
+
+## Was das Script macht (Option 1–3)
+
+1. System aktualisieren (`apt update && upgrade`)
+2. Deutsche Standards (Zeitzone, Locale, Tastatur)
+3. Abhängigkeiten installieren (Build-Tools, Apache, PHP, Mosquitto, etc.)
 4. Repository klonen
 5. GPIO konfigurieren (nur Raspberry Pi)
-6. PHP konfigurieren (Upload-Limits)
-7. Python einrichten (je nach gewählter Option)
+6. PHP konfigurieren (Upload-Limits 300M)
+7. Python einrichten (je nach Option)
 8. OpenWB installieren + Runtime-Patches + Post-Update Hook
 
 ### Update-Resistenz
 
-Nach jedem OpenWB-Update startet der Post-Update Hook automatisch und patcht:
-- `atreboot.sh`: Alle `pip3` Aufrufe auf venv-pip umgeleitet (PEP 668 sicher)
+Der Post-Update Hook (`post-update.sh`) patcht nach jedem OpenWB-Update automatisch:
+- `atreboot.sh`: `pip3` → venv-pip (PEP 668 sicher)
 - `openwb2.service`: venv-Python als ExecStart
 - `simpleAPI.service`: venv-Python als ExecStart
 - `requirements.txt`: jq/lxml/grpcio für Python 3.13+ angepasst
-- `asyncio.coroutine` Kompatibilitäts-Shim für Python 3.11+
+- `asyncio.coroutine` Shim für Python 3.11+
+- Alle aktivierten Feature-Patches werden reapplied
+
+## Unterstützte Plattformen
+
+| Plattform | Status |
+|-----------|--------|
+| x86_64 (Proxmox, PC) | Funktioniert |
+| ARM64 (RPi 4/5 64-bit) | Funktioniert |
+| ARM32 (RPi 3/Zero 32-bit) | Funktioniert |
+| Proxmox LXC/VM | Funktioniert |
+
+Pi-spezifische Pakete und Patches werden automatisch nur auf echter Hardware angeboten.
+
+## Voraussetzungen
+
+- Frisches Debian Trixie
+- SSH-Zugang
+- Internetverbindung
+- ~4 GB freier Speicherplatz
 
 ## Debian Trixie installieren
 
-### Variante A: Raspberry Pi Imager
+### Raspberry Pi
 
-1. Raspberry Pi Imager herunterladen
-2. OS wählen: Raspberry Pi OS (64-bit) Lite
-3. Zahnrad: SSH aktivieren, Benutzer `openwb` anlegen
-4. Auf SD-Karte schreiben, booten, per SSH einloggen
-5. Auf Trixie upgraden:
+1. Raspberry Pi Imager → OS: Raspberry Pi OS (64-bit) Lite
+2. Zahnrad: SSH aktivieren, Benutzer `openwb` anlegen
+3. Auf SD-Karte schreiben, booten, SSH einloggen
+4. Auf Trixie upgraden:
    ```bash
    sudo apt update && sudo apt upgrade -y
-   # sources.list von bookworm auf trixie ändern
    sudo sed -i 's/bookworm/trixie/g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null
    sudo apt update && sudo apt full-upgrade -y
    sudo reboot
    ```
 
-### Variante B: Direktes Debian Trixie Image
+### Direktes Image
 
-1. Image von https://www.debian.org/devel/ herunterladen
+1. Image von https://www.debian.org/devel/ laden
 2. Auf SD-Karte/USB stick schreiben
-3. Booten, SSH einrichten, Benutzer `openwb` anlegen
+3. Booten, Benutzer `openwb` anlegen
 
-### Danach: Installer ausführen
+### Danach: Installer starten
 
 ```bash
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh)
 ```
 
 ## Wichtige Dateipfade
@@ -141,10 +165,10 @@ curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh 
 | Pfad | Beschreibung |
 |------|-------------|
 | `/var/www/html/openWB/` | OpenWB-Installation |
-| `/opt/openwb-venv/` | Virtual Environment (Option 1 & 3) |
-| `/opt/python3.14.4/` | Kompiliertes Python (nur Option 3) |
-| `/usr/local/bin/openwb-activate` | venv Wrapper |
-| `/var/www/html/openWB/ramdisk/` | Laufzeit-Logs |
+| `/opt/openwb-venv/` | Python Virtual Environment |
+| `/opt/openwb-patches/` | Patch-Konfiguration (`enabled.conf`) |
+| `/opt/openwb-tools/` | Tool-Konfiguration (`enabled.conf`) |
+| `/home/openwb/openwb-trixie/` | Repository (Patches + Tools) |
 | `/var/www/html/openWB/data/config/post-update.sh` | Post-Update Hook |
 
 ## Troubleshooting
@@ -164,23 +188,16 @@ cat /var/www/html/openWB/ramdisk/thread_errors.log
 sudo systemctl restart openwb2
 ```
 
-**PEP 668 Fehler (`externally-managed-environment`):**
+**PEP 668 Fehler:**
 ```bash
-# Nur bei Option 1 & 3 nötig - sollte automatisch gepatcht sein
-cd ~/openwb-trixie && sudo bash openwb_post_update_hook.sh
-```
-
-**asyncio.coroutine Fehler:**
-```bash
-# Shim sollte automatisch installiert sein
-ls /opt/openwb-venv/lib/python*/site-packages/openwb_py313_compat.py
+# Post-Update Hook manuell ausführen:
+sudo bash ~/openwb-trixie/openwb_post_update_hook.sh
 ```
 
 **venv neu erstellen:**
 ```bash
 sudo rm -rf /opt/openwb-venv
-cd ~/openwb-trixie
-curl -s https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh | bash -s -- --venv
+bash <(curl -fsSL https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install.sh) --venv
 ```
 
 **Services neustarten:**
@@ -205,11 +222,8 @@ Optionen:
 
 | Datei | Beschreibung |
 |-------|-------------|
-| `install.sh` | Haupt-Installer (dieses Script macht alles) |
-| `openwb_post_update_hook.sh` | Post-Update Hook (wird automatisch installiert) |
+| `install.sh` | Haupt-Installer mit whiptail-Menü |
+| `openwb_post_update_hook.sh` | Post-Update Hook (automatisch installiert) |
 | `requirements.txt` | Python-Pakete fürs venv |
-| `setup_venv.sh` | venv Setup (wird vom Installer aufgerufen) |
-| `install_python3.9.sh` | Python 3.9 Legacy-Installer (einzeln nutzbar) |
-| `install_trixie_direct.sh` | Direkt-Installer mit venv (einzeln nutzbar) |
-| `install_complete.sh` | Komplett-Installer mit Bookworm-Upgrade (einzeln nutzbar) |
-| `update_to_trixie.sh` | Bookworm auf Trixie upgraden (einzeln nutzbar) |
+| `patches/` | Feature-Patches (modular, update-sicher) |
+| `tools/` | Optionale Tools (modbus-proxy, etc.) |

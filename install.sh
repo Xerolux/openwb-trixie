@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="81cb302"
+BUILD_ID="03e7452"
 
 # ============================================================================
 # Argumente parsen
@@ -984,13 +984,12 @@ whiptail_main_menu() {
     local sel
     sel=$(whiptail --title "OpenWB · Debian Trixie Installer v${INSTALLER_VERSION}" \
         --cancel-button "Beenden" \
-        --menu "\nWas möchtest du tun?\n\nBuild: ${BUILD_ID}" 22 72 6 \
-        "1" "System-Python + venv        EMPFOHLEN (Python ${sys_py})" \
-        "2" "Python 3.9.25 kompilieren    ORIGINAL (30-60 Min)" \
-        "3" "Python 3.14.4 + venv         NEUESTE (30-60 Min)" \
-        "4" "Feature-Patches verwalten    installieren / entfernen" \
-        "5" "Tools installieren           modbus-proxy u.a." \
-        ""  "" \
+        --menu "\nInstallationsoption wählen:\n\nBuild: ${BUILD_ID}" 20 70 6 \
+        "1" "System-Python + venv       [EMPFOHLEN]  Python ${sys_py}" \
+        "2" "Python 3.9.25 kompilieren   [ORIGINAL]   ~30-60 Min" \
+        "3" "Python 3.14.4 + venv        [NEUESTE]    ~30-60 Min" \
+        "4" "Feature-Patches verwalten" \
+        "5" "Tools installieren" \
         "6" "Beenden" \
         3>&1 1>&2 2>&3)
 
@@ -1089,9 +1088,9 @@ whiptail_patches_menu() {
     fi
 
     local selected
-    selected=$(whiptail --title "Feature-Patches (update-sicher)" \
+    selected=$(whiptail --title "Feature-Patches" \
         --cancel-button "Zurück" \
-        --checklist "\nLeere Checkbox = nicht installiert\nGefüllte Checkbox = INSTALLED\n\nAuswählen zum Installieren/Entfernen:" \
+        --checklist "\n[*] = installiert    [ ] = verfügbar\n\nPatches werden nach OpenWB-Updates automatisch reapplied." \
         22 78 ${#patch_files[@]} \
         "${args[@]}" \
         3>&1 1>&2 2>&3)
@@ -1324,9 +1323,9 @@ whiptail_tools_menu() {
     fi
 
     local selected
-    selected=$(whiptail --title "Tools installieren / entfernen" \
+    selected=$(whiptail --title "Tools" \
         --cancel-button "Zurück" \
-        --checklist "\n[*] = installiert    [ ] = verfügbar\n\nLeertaste zum Auswählen, OK zum Anwenden:" \
+        --checklist "\n[*] = installiert    [ ] = verfügbar\n\nLeertaste = Auswählen, Enter = Übernehmen" \
         22 78 ${#tool_files[@]} \
         "${args[@]}" \
         3>&1 1>&2 2>&3)
@@ -1483,6 +1482,11 @@ ensure_repo() {
         return 0
     fi
 
+    if ! command -v git >/dev/null 2>&1; then
+        log "Installiere git..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git 2>/dev/null || true
+    fi
+
     if [ -d "$REPO_DIR" ]; then
         cd "$REPO_DIR"
         git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
@@ -1490,7 +1494,8 @@ ensure_repo() {
     fi
 
     log "Bereite Repository vor..."
-    mkdir -p "/home/$OPENWB_USER"
+    sudo mkdir -p "$REPO_DIR"
+    sudo chown "$(id -un):$(id -gn)" "$REPO_DIR" 2>/dev/null || true
     git clone https://github.com/Xerolux/openwb-trixie.git "$REPO_DIR" 2>/dev/null || true
 }
 
@@ -1606,22 +1611,12 @@ main() {
     fi
     log_success "Abhängigkeiten installiert"
 
-    # ── Schritt 4: Repository klonen ──
+    # ── Schritt 4: Repository vorbereiten ──
     log_step "Schritt 4/8: Repository vorbereiten"
-    if [ ! -d "/home/$OPENWB_USER/openwb-trixie" ]; then
-        log "Klone Repository..."
-        sudo mkdir -p "/home/$OPENWB_USER"
-        cd "/home/$OPENWB_USER"
-        git clone https://github.com/Xerolux/openwb-trixie.git
-        cd openwb-trixie
-        SCRIPT_DIR="$(pwd)"
-    else
-        log "Repository vorhanden"
-        cd "/home/$OPENWB_USER/openwb-trixie"
-        SCRIPT_DIR="$(pwd)"
-    fi
-
-    PATCHES_SRC_DIR="$SCRIPT_DIR"
+    cd "$REPO_DIR"
+    SCRIPT_DIR="$REPO_DIR"
+    PATCHES_SRC_DIR="$REPO_DIR"
+    log_success "Repository bereit"
 
     # ── Schritt 5: GPIO ──
     log_step "Schritt 5/8: GPIO-Konfiguration"
