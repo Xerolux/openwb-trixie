@@ -72,24 +72,48 @@ REQUIREMENTS_FILE="/home/openwb/openwb-trixie/requirements.txt"
 OPENWB_DIR="/var/www/html/openWB"
 
 reapply_openwb_patches() {
+    local atreboot_file="$OPENWB_DIR/runs/atreboot.sh"
+    local service_file="$OPENWB_DIR/data/config/openwb2.service"
+    local simpleapi_service_file="$OPENWB_DIR/data/config/openwb-simpleAPI.service"
+    local req_file="$OPENWB_DIR/requirements.txt"
+    local venv_pip="/opt/openwb-venv/bin/pip3"
+    local venv_python="/opt/openwb-venv/bin/python3"
+
     log "Setze update-feste OpenWB-Patches erneut..."
 
-    if [ -f "$OPENWB_DIR/requirements.txt" ]; then
+    if [ -f "$req_file" ]; then
         sed -E -i \
             -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]*)$/# jq entfernt auf Python 3.13 (System-jq via apt)\1/' \
             -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
             -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
-            "$OPENWB_DIR/requirements.txt"
+            "$req_file"
+        log_success "requirements.txt gepatcht"
     fi
 
-    if [ -f "$OPENWB_DIR/runs/atreboot.sh" ]; then
-        sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$OPENWB_DIR/runs/atreboot.sh"
-        chmod +x "$OPENWB_DIR/runs/atreboot.sh"
+    if [ -f "$atreboot_file" ]; then
+        sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+-r@\1/opt/openwb-venv/bin/pip3 install -r@g' "$atreboot_file"
+        sed -i -E 's@(^|[^[:alnum:]_/.-])pip3[[:space:]]+install[[:space:]]+--only-binary@\1/opt/openwb-venv/bin/pip3 install --only-binary@g' "$atreboot_file"
+        sed -i 's|pip uninstall urllib3 -y|/opt/openwb-venv/bin/pip3 uninstall urllib3 -y|g' "$atreboot_file"
+        chmod +x "$atreboot_file"
+        log_success "atreboot.sh gepatcht (venv-pip)"
     fi
 
-    if [ -f "$OPENWB_DIR/data/config/openwb-simpleAPI.service" ]; then
-        sed -i -E 's@^ExecStart=.*simpleAPI_mqtt\.py$@ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py@g' "$OPENWB_DIR/data/config/openwb-simpleAPI.service"
-        ln -sfn "$OPENWB_DIR/data/config/openwb-simpleAPI.service" /etc/systemd/system/openwb-simpleAPI.service
+    if [ -f "$service_file" ]; then
+        sed -i "s#^ExecStart=.*main.py#ExecStart=$venv_python $OPENWB_DIR/packages/main.py#g" "$service_file"
+        log_success "openwb2.service gepatcht (venv-python)"
+    fi
+
+    if [ -f "$simpleapi_service_file" ]; then
+        sed -i -E 's@^ExecStart=.*simpleAPI_mqtt\.py$@ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py@g' "$simpleapi_service_file"
+        ln -sfn "$simpleapi_service_file" /etc/systemd/system/openwb-simpleAPI.service
+        log_success "simpleAPI.service gepatcht (venv-python)"
+    fi
+
+    local shim_dir="/opt/openwb-venv/lib/python3.13/site-packages"
+    if [ -d "$shim_dir" ] && [ ! -f "$shim_dir/openwb_py313_compat.py" ]; then
+        printf 'import asyncio\nimport types\nimport sys\nif sys.version_info >= (3, 11) and not hasattr(asyncio, "coroutine"):\n    def _coroutine_compat(func):\n        return types.coroutine(func)\n    asyncio.coroutine = _coroutine_compat\n' > "$shim_dir/openwb_py313_compat.py"
+        echo 'import openwb_py313_compat' > "$shim_dir/openwb_py313_compat.pth"
+        log_success "asyncio.coroutine Kompatibilitaets-Shim installiert"
     fi
 
     if [ -f "/etc/init.d/mosquitto_local" ] && [ ! -f "/etc/systemd/system/mosquitto_local.service" ]; then
