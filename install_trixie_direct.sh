@@ -77,7 +77,7 @@ trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 # Benutzer vorbereiten und Installer im openwb-Kontext fortsetzen
 OPENWB_USER="openwb"
 OPENWB_TRIXIE_SCRIPT_URL="${OPENWB_TRIXIE_SCRIPT_URL:-https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/install_trixie_direct.sh}"
-INSTALLER_VERSION="2026-05-01.21"
+INSTALLER_VERSION="2026-05-01.22"
 
 ensure_openwb_user() {
     if id "$OPENWB_USER" >/dev/null 2>&1; then
@@ -396,6 +396,8 @@ run_openwb_core_installer_noninteractive() {
         -e 's@sudo -u "\$OPENWB_USER" pip install -r "\${OPENWBBASEDIR}/requirements.txt"@sed -i -E '\''s/^jq==[0-9]+\\.[0-9]+\\.[0-9]+([[:space:]]*)$/# jq entfernt auf Python 3.13 (System-jq via apt)\\1/; s/^lxml==4\\.9\\.[0-9]+([[:space:]]*)$/lxml==5.3.2\\1/; s/^grpcio==1\\.60\\.1([[:space:]]*)$/grpcio==1.71.0\\1/'\'' "\${OPENWBBASEDIR}/requirements.txt"; /opt/openwb-venv/bin/pip3 install -U pip setuptools wheel; /opt/openwb-venv/bin/pip3 install -r "\${OPENWBBASEDIR}/requirements.txt"@g' \
         -e 's@^/usr/sbin/groupadd "\$OPENWB_GROUP"$@/usr/sbin/groupadd "\$OPENWB_GROUP" || true@g' \
         -e 's@^/usr/sbin/useradd "\$OPENWB_USER" -g "\$OPENWB_GROUP" --create-home$@/usr/sbin/useradd "\$OPENWB_USER" -g "\$OPENWB_GROUP" --create-home || true@g' \
+        -e 's@^ln -s "\${OPENWBBASEDIR}/data/config/openwb2.service" /etc/systemd/system/openwb2.service$@ln -sfn "\${OPENWBBASEDIR}/data/config/openwb2.service" /etc/systemd/system/openwb2.service@g' \
+        -e 's@^ln -s "\${OPENWBBASEDIR}/data/config/openwb-simpleAPI.service" /etc/systemd/system/openwb-simpleAPI.service$@ln -sfn "\${OPENWBBASEDIR}/data/config/openwb-simpleAPI.service" /etc/systemd/system/openwb-simpleAPI.service@g' \
         "$install_script"
 
     # Fallback: fange abweichende Upstream-Varianten des pip-Aufrufs ab
