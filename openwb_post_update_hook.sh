@@ -114,11 +114,9 @@ reapply_openwb_patches() {
 
     if [ -f "$req_file" ]; then
         sed -E -i \
-            -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]*)$/# jq entfernt auf Python 3.13 (System-jq via apt)\1/' \
-            -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
-            -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
+            -e '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
             "$req_file"
-        log_success "requirements.txt gepatcht"
+        log_success "requirements.txt gepatcht (alle auf latest außer pymodbus)"
     fi
 
     if [ -f "$atreboot_file" ]; then

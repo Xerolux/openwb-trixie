@@ -776,9 +776,7 @@ do_openwb_install() {
 REQ="${OPENWBBASEDIR:-/var/www/html/openWB}/requirements.txt"
 [ -f "$REQ" ] || exit 0
 sed -i -E \
-    -e 's/^grpcio==1\.60\.1/grpcio==1.71.0/' \
-    -e 's/^lxml==4\.9\.[0-9]+/lxml==5.3.2/' \
-    -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+/jq==1.11.0/' \
+    -e '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
     "$REQ"
 PATCHEOF
     chmod +x "$patch_req"
@@ -882,11 +880,9 @@ do_runtime_patches() {
         # requirements.txt für Python 3.13 patchen
         local req="$OPENWB_DIR/requirements.txt"
         if [ -f "$req" ]; then
-            log "Patche requirements.txt für Python 3.13..."
+            log "Patche requirements.txt (alle auf latest außer pymodbus)..."
             sudo sed -E -i \
-                -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
-                -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
-                -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]*)$/jq==1.11.0\1/' \
+                -e '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
                 "$req"
         fi
     fi
