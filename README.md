@@ -259,5 +259,7 @@ Dieses Projekt ist ein **inoffizielles, Community-basiertes Projekt** und steht 
 
 Dieses Repository stellt lediglich einen Installer und ergaenzende Module fuer den Betrieb von openWB auf Debian Trixie bereit. Es wird **keinerlei Gewaehrleistung, Support oder Haftung** uebernommen. Die Nutzung erfolgt **ausschliesslich auf eigene Gefahr**.
 
+**openWB Projekt:** https://github.com/openWB/core
+
 Siehe auch [LICENSE](LICENSE) (MIT).
 
