@@ -48,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             MODE="patches"
             shift
             ;;
+        --status|-s)
+            MODE="status"
+            shift
+            ;;
         --non-interactive|-n)
             NONINTERACTIVE=1
             shift
@@ -733,7 +737,7 @@ REQ="${OPENWBBASEDIR:-/var/www/html/openWB}/requirements.txt"
 [ -f "$REQ" ] || exit 0
     sed -i -E \
         -e '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
-        -e '/^paho-mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
+        -e '/^paho.mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
         "$REQ"
 PATCHEOF
     chmod +x "$patch_req"
@@ -842,7 +846,7 @@ do_runtime_patches() {
             log "Patche requirements.txt (alle auf latest außer pymodbus, paho-mqtt)..."
             sudo sed -E -i \
                 -e '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
-                -e '/^paho-mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
+                -e '/^paho.mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
                 "$req"
         fi
     fi
@@ -1584,6 +1588,102 @@ verify_repo() {
         log_error "  git clone https://github.com/Xerolux/openwb-trixie.git $REPO_DIR"
         exit 1
     fi
+}
+
+show_status() {
+    local BOLD='\033[1m' DIM='\033[2m' W='\033[0m'
+    local GR='\033[0;32m' BG='\033[1;32m' BB='\033[1;34m'
+    local BY='\033[1;33m' RED='\033[0;31m' CY='\033[0;36m'
+
+    echo ""
+    echo -e "  ${BB}┌─────────────────────────────────────────────────────────────┐${W}"
+    echo -e "  ${BB}│${W}           ${BG}OpenWB Trixie — System Status${W}                  ${BB}│${W}"
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+
+    local deb_ver
+    deb_ver=$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-${VERSION:-?}}" || echo "?")
+    echo -e "  ${BB}│${W}  ${BOLD}Debian:${W}       $deb_ver"
+    echo -e "  ${BB}│${W}  ${BOLD}Architektur:${W}  $(uname -m)$(is_raspberry_pi && echo " (Raspberry Pi)" || true)"
+
+    local ip_addr
+    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}')
+    echo -e "  ${BB}│${W}  ${BOLD}IP:${W}           ${CY}${ip_addr:-?}${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Hostname:${W}     $(hostname 2>/dev/null || echo "?")"
+
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Python / venv:${W}"
+
+    if [ -d "$VENV_DIR" ]; then
+        echo -e "  ${BB}│${W}    ${GR}venv:${W}     ${BG}$($VENV_DIR/bin/python3 --version 2>&1 | awk '{print $2}')${W} ($VENV_DIR)"
+        echo -e "  ${BB}│${W}    ${GR}System:${W}   $(python3 --version 2>&1 | awk '{print $2}')"
+    else
+        echo -e "  ${BB}│${W}    ${RED}venv nicht gefunden${W}"
+    fi
+
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Installer:${W}"
+
+    local current_build
+    if [ -d "$REPO_DIR/.git" ]; then
+        current_build=$(cd "$REPO_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "?")
+    else
+        current_build="${BUILD_ID:-?}"
+    fi
+
+    local remote_build
+    remote_build=$(git ls-remote --refs https://github.com/Xerolux/openwb-trixie.git HEAD 2>/dev/null | awk '{print substr($1,1,7)}')
+
+    echo -e "  ${BB}│${W}    ${BOLD}Installiert:${W}  ${BG}${current_build}${W}"
+    if [ -n "$remote_build" ]; then
+        if [ "$current_build" = "$remote_build" ]; then
+            echo -e "  ${BB}│${W}    ${BOLD}Aktuell:${W}      ${GR}${remote_build} (up to date)${W}"
+        else
+            echo -e "  ${BB}│${W}    ${BOLD}Aktuell:${W}      ${BY}${remote_build} (Update verfügbar!)${W}"
+        fi
+    fi
+
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}OpenWB:${W}"
+
+    if [ -d "$OPENWB_DIR" ]; then
+        local owb_ver
+        owb_ver=$(cd "$OPENWB_DIR" 2>/dev/null && git log -1 --format='%h %cs' 2>/dev/null || echo "?")
+        echo -e "  ${BB}│${W}    ${BOLD}Version:${W}     $owb_ver"
+    else
+        echo -e "  ${BB}│${W}    ${RED}nicht installiert${W}"
+    fi
+
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Services:${W}"
+
+    for svc in mosquitto mosquitto_local openwb2 openwb-simpleAPI apache2 openwbRemoteSupport; do
+        local status
+        status=$(systemctl is-active "$svc" 2>/dev/null || echo "?")
+        if [ "$status" = "active" ]; then
+            echo -e "  ${BB}│${W}    ${GR}OK${W}    $svc"
+        else
+            echo -e "  ${BB}│${W}    ${RED}$status${W}  $svc"
+        fi
+    done
+
+    if [ -f "$PATCH_CONF" ] && [ -s "$PATCH_CONF" ]; then
+        echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+        echo -e "  ${BB}│${W}  ${BOLD}Feature-Patches:${W}"
+        while IFS= read -r pid; do
+            [ -z "$pid" ] && continue
+            echo -e "  ${BB}│${W}    ${GR}aktiv${W}  $pid"
+        done < "$PATCH_CONF"
+    fi
+
+    echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
+    echo -e "  ${BB}│${W}  ${BOLD}Boot-Service:${W}  $(systemctl is-active openwb-trixie-boot.service 2>/dev/null || echo "?")"
+    echo -e "  ${BB}│${W}  ${BOLD}pip3-Wrapper:${W}  $(if [ -f /usr/local/bin/pip3 ] && head -1 /usr/local/bin/pip3 2>/dev/null | grep -q openwb-venv; then echo '${GR}aktiv${W}'; else echo '${RED}fehlt${W}'; fi)"
+    echo -e "  ${BB}│${W}  ${BOLD}Post-Update:${W}   $(if [ -f "$OPENWB_DIR/data/config/post-update.sh" ]; then echo '${GR}installiert${W}'; else echo '${RED}fehlt${W}'; fi)"
+
+    echo -e "  ${BB}│${W}"
+    echo -e "  ${BB}│${W}  ${CY}Web-Interface:${W}  http://${ip_addr:-?}"
+    echo -e "  ${BB}└─────────────────────────────────────────────────────────────┘${W}"
+    echo ""
 }
 
 main() {
