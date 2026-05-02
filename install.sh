@@ -768,7 +768,20 @@ do_openwb_install() {
     tmp_dir=$(mktemp -d)
     install_script="$tmp_dir/openwb-install.sh"
     packages_script="$tmp_dir/install_packages.sh"
+    local patch_req="$tmp_dir/patch_requirements.sh"
     trap 'rm -rf "$tmp_dir"' RETURN
+
+    cat > "$patch_req" << 'PATCHEOF'
+#!/bin/bash
+REQ="${OPENWBBASEDIR:-/var/www/html/openWB}/requirements.txt"
+[ -f "$REQ" ] || exit 0
+sed -i -E \
+    -e 's/^grpcio==1\.60\.1/grpcio==1.71.0/' \
+    -e 's/^lxml==4\.9\.[0-9]+/lxml==5.3.2/' \
+    -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+/# jq removed (Python 3.13)/' \
+    "$REQ"
+PATCHEOF
+    chmod +x "$patch_req"
 
     log "Lade OpenWB Installer..."
     curl -fsSL https://raw.githubusercontent.com/openWB/core/master/openwb-install.sh -o "$install_script"
@@ -785,7 +798,7 @@ do_openwb_install() {
         sed -i \
             -e "s@curl -s \"https://raw.githubusercontent.com/openWB/core/master/runs/install_packages.sh\" | bash -s@bash \"$packages_script\"@g" \
             -e 's@mkdir "$OPENWBBASEDIR"@mkdir -p "$OPENWBBASEDIR"@g' \
-            -e "s@sudo -u \"\\\$OPENWB_USER\" pip install -r \"\\\${OPENWBBASEDIR}/requirements.txt\"@/opt/openwb-venv/bin/pip3 install -U pip setuptools wheel; /opt/openwb-venv/bin/pip3 install -r \"\\\${OPENWBBASEDIR}/requirements.txt\"@g" \
+            -e "s@sudo -u \"\\\$OPENWB_USER\" pip install -r \"\\\${OPENWBBASEDIR}/requirements.txt\"@bash ${tmp_dir}/patch_requirements.sh; /opt/openwb-venv/bin/pip3 install -U pip setuptools wheel; /opt/openwb-venv/bin/pip3 install -r \"\\\${OPENWBBASEDIR}/requirements.txt\"@g" \
             -e 's@^/usr/sbin/groupadd "\$OPENWB_GROUP"$@/usr/sbin/groupadd "$OPENWB_GROUP" || true@g' \
             -e 's@^/usr/sbin/useradd "\$OPENWB_USER" -g "\$OPENWB_GROUP" --create-home$@/usr/sbin/useradd "$OPENWB_USER" -g "$OPENWB_GROUP" --create-home || true@g' \
             -e 's@^ln -s "\${OPENWBBASEDIR}/data/config/openwb2.service"@ln -sfn "${OPENWBBASEDIR}/data/config/openwb2.service"@g' \
@@ -793,8 +806,8 @@ do_openwb_install() {
             "$install_script"
 
         sed -E -i \
-            -e "s@(^[[:space:]]*sudo -u \"\\\$OPENWB_USER\"[[:space:]]+)pip([[:space:]]+install[[:space:]]+-r[[:space:]]+)@/opt/openwb-venv/bin/pip3\\2@g" \
-            -e "s@(^[[:space:]]*)pip([[:space:]]+install[[:space:]]+-r[[:space:]]+)@/opt/openwb-venv/bin/pip3\\2@g" \
+            -e "s@(^[[:space:]]*sudo -u \"\\\$OPENWB_USER\"[[:space:]]+)pip([[:space:]]+install[[:space:]]+-r[[:space:]]+)@bash ${tmp_dir}/patch_requirements.sh; /opt/openwb-venv/bin/pip3\\2@g" \
+            -e "s@(^[[:space:]]*)pip([[:space:]]+install[[:space:]]+-r[[:space:]]+)@bash ${tmp_dir}/patch_requirements.sh; /opt/openwb-venv/bin/pip3\\2@g" \
             "$install_script"
     else
         sed -i \
@@ -806,6 +819,10 @@ do_openwb_install() {
     fi
 
     sed -i '2i set -Eeuo pipefail' "$install_script"
+
+    if [ "$MODE" = "venv" ] || [ "$MODE" = "python314" ]; then
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y jq
+    fi
 
     log "Führe OpenWB Installer aus..."
     sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
