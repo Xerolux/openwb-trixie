@@ -845,6 +845,42 @@ do_runtime_patches() {
     log_success "Runtime Patches angewendet"
 }
 
+ensure_pip3_wrapper() {
+    if [ "$MODE" != "venv" ] && [ "$MODE" != "python314" ]; then
+        return 0
+    fi
+
+    local wrapper="/usr/local/bin/pip3"
+    if [ -f "$wrapper" ] && head -1 "$wrapper" | grep -q openwb-venv; then
+        return 0
+    fi
+
+    log "Erstelle pip3-Wrapper -> venv..."
+    sudo tee "$wrapper" > /dev/null <<'WRAPPER'
+#!/bin/bash
+if [ -x /opt/openwb-venv/bin/pip3 ]; then
+    exec /opt/openwb-venv/bin/pip3 "$@"
+else
+    exec /usr/bin/pip3 "$@"
+fi
+WRAPPER
+    sudo chmod 755 "$wrapper"
+    log_success "pip3-Wrapper installiert"
+
+    sudo mkdir -p /opt/openwb-venv/bin
+    sudo tee /opt/openwb-venv/bin/pip3-system > /dev/null <<'SYSPIP'
+#!/bin/bash
+exec /usr/bin/pip3 "$@"
+SYSPIP
+    sudo chmod 755 /opt/openwb-venv/bin/pip3-system
+}
+
+fix_openwb_homedir() {
+    if [ -d "/home/$OPENWB_USER" ]; then
+        sudo chown -R "$OPENWB_USER:$OPENWB_USER" "/home/$OPENWB_USER"
+    fi
+}
+
 # ============================================================================
 # Post-Update Hook installieren
 # ============================================================================
@@ -1658,6 +1694,8 @@ main() {
     log_step "Schritt 8/8: OpenWB installieren + patches"
     do_openwb_install
     do_runtime_patches
+    ensure_pip3_wrapper
+    fix_openwb_homedir
     do_post_update_hook
 
     # Bereits aktivierte Feature-Patches anwenden (ohne Menü)

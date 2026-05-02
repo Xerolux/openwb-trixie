@@ -269,6 +269,25 @@ fi
 
 reapply_openwb_patches
 
+# pip3-Wrapper sicherstellen
+if [ -d "$VENV_DIR" ] && [ ! -f "/usr/local/bin/pip3" ]; then
+    cat > /usr/local/bin/pip3 <<'WRAPPER'
+#!/bin/bash
+if [ -x /opt/openwb-venv/bin/pip3 ]; then
+    exec /opt/openwb-venv/bin/pip3 "$@"
+else
+    exec /usr/bin/pip3 "$@"
+fi
+WRAPPER
+    chmod 755 /usr/local/bin/pip3
+    log_success "pip3-Wrapper erneut installiert"
+fi
+
+# Home-Dir Ownership korrigieren
+if [ -d "/home/openwb" ]; then
+    chown -R openwb:openwb /home/openwb 2>/dev/null || true
+fi
+
 # Feature-Patches erneut anwenden
 if [ -f "$PATCH_CONF" ] && [ -s "$PATCH_CONF" ]; then
     log "Wende aktivierte Feature-Patches erneut an..."
