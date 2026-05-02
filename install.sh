@@ -181,6 +181,12 @@ ensure_openwb_user() {
         sudo groupadd gpio 2>/dev/null || true
         sudo usermod -aG gpio "$OPENWB_USER" 2>/dev/null || true
     fi
+    local sudoers_file="/etc/sudoers.d/openwb-nopasswd"
+    if [ ! -f "$sudoers_file" ]; then
+        echo "$OPENWB_USER ALL=(ALL) NOPASSWD: ALL" | sudo tee "$sudoers_file" >/dev/null
+        sudo chmod 440 "$sudoers_file"
+        log "NOPASSWD sudo für '$OPENWB_USER' eingerichtet"
+    fi
 }
 
 ensure_openwb_password_for_sudo() {
