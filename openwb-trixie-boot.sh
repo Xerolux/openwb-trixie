@@ -40,11 +40,10 @@ WRAPPER
     log "pip3-Wrapper installiert"
 fi
 
-# requirements.txt patchen (alle auf latest außer pymodbus)
+# requirements.txt patchen (Pins entfernen, pymodbus+paho_mqtt behalten)
 req="$OPENWB_DIR/requirements.txt"
 if [ -f "$req" ]; then
-    sed -i -E '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' "$req"
-    sed -i -E '/^paho.mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' "$req"
+    sed -i -E '/^pymodbus==|^paho.mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' "$req"
     log "requirements.txt gepatcht"
 fi
 

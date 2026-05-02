@@ -113,11 +113,8 @@ reapply_openwb_patches() {
     log "Setze update-feste OpenWB-Patches erneut..."
 
     if [ -f "$req_file" ]; then
-        sed -E -i \
-            -e '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
-            -e '/^paho.mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' \
-            "$req_file"
-        log_success "requirements.txt gepatcht (alle auf latest außer pymodbus, paho-mqtt)"
+        sed -i -E '/^pymodbus==|^paho.mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' "$req_file"
+        log_success "requirements.txt gepatcht (Pins entfernt, pymodbus+paho_mqtt behalten)"
     fi
 
     if [ -f "$atreboot_file" ]; then
