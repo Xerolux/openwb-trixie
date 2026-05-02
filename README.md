@@ -249,3 +249,15 @@ Optionen:
 | `requirements.txt` | Python-Pakete fürs venv |
 | `patches/` | Feature-Patches (modular, update-sicher) |
 | `tools/` | Optionale Tools (modbus-proxy, etc.) |
+| `openwb_legacy_wallboxes_evcc_optimized/` | Legacy Wallbox Module (experimentell) |
+
+## Hinweis / Disclaimer
+
+Dieses Projekt ist ein **inoffizielles, Community-basiertes Projekt** und steht in **keinerlei Verbindung** zum openWB-Projekt oder dessen Entwicklern.
+
+**openWB** und alle damit verbundenen Marken, Logos und Software sind Eigentum der jeweiligen Rechteinhaber. Alle Rechte an der openWB-Software verbleiben beim openWB-Projekt (https://github.com/snaptec/openWB).
+
+Dieses Repository stellt lediglich einen Installer und ergaenzende Module fuer den Betrieb von openWB auf Debian Trixie bereit. Es wird **keinerlei Gewaehrleistung, Support oder Haftung** uebernommen. Die Nutzung erfolgt **ausschliesslich auf eigene Gefahr**.
+
+Siehe auch [LICENSE](LICENSE) (MIT).
+
