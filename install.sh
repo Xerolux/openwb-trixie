@@ -353,10 +353,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
-ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto_local.conf -d
-PIDFile=/run/mosquitto_local.pid
-TimeoutSec=60
+Type=simple
+ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto_local.conf
 Restart=on-failure
 
 [Install]
