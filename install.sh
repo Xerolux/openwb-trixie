@@ -773,9 +773,11 @@ PATCHEOF
     fi
 
     sed -i '2i set -Eeuo pipefail' "$install_script"
+    sed -i 's/^systemctl start openwb2/echo "openwb2 start deferred (trixie patching)"/g' "$install_script"
+    sed -i '/sudo reboot/d' "$install_script"
 
     log "Führe OpenWB Installer aus..."
-    sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
+    sudo DEBIAN_FRONTEND=noninteractive bash "$install_script" || true
     log_success "OpenWB installiert"
 }
 

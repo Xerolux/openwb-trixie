@@ -19,6 +19,13 @@ fi
 
 log "Reappliziere OpenWB Trixie Patches..."
 
+# atreboot.sh Reboots deaktivieren (wird von OpenWB Updates überschrieben)
+atreboot="$OPENWB_DIR/runs/atreboot.sh"
+if [ -f "$atreboot" ]; then
+    sed -i 's/sudo reboot now/echo "reboot suppressed by openwb-trixie"/g' "$atreboot"
+    log "atreboot.sh Reboots unterdrückt"
+fi
+
 # pip3-Wrapper sicherstellen
 if [ ! -f /usr/local/bin/pip3 ] || ! head -1 /usr/local/bin/pip3 2>/dev/null | grep -q openwb-venv; then
     cat > /usr/local/bin/pip3 <<'WRAPPER'
