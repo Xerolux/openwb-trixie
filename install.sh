@@ -14,6 +14,10 @@
 #   ./install.sh --python39       Python 3.9.25 kompilieren (Legacy, Original)
 #   ./install.sh --python314      Python 3.14.4 kompilieren + venv (neuestes Python)
 #   ./install.sh --patches        Feature-Patches verwalten
+#   ./install.sh --status         Status anzeigen
+#   ./install.sh --diagnose       Diagnose-Archiv erstellen
+#   ./install.sh --diagnose-upload Diagnose-Archiv erstellen + zu paste.blueml.eu hochladen
+#   ./install.sh --dry-run        Nur anzeigen, nichts ändern
 #   ./install.sh --help           Hilfe anzeigen
 #
 # Getestet auf: x86_64, ARM64, ARM32, Proxmox, Raspberry Pi
@@ -29,6 +33,10 @@ BUILD_ID="${BUILD_ID:-$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && git r
 # ============================================================================
 MODE="${MODE:-}"
 NONINTERACTIVE="${NONINTERACTIVE:-0}"
+DRY_RUN="${DRY_RUN:-0}"
+DIAG_UPLOAD_CONSENT="${DIAG_UPLOAD_CONSENT:-0}"
+PASTE_UPLOAD_URL="${PASTE_UPLOAD_URL:-https://paste.blueml.eu}"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/lib"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -52,12 +60,41 @@ while [[ $# -gt 0 ]]; do
             MODE="status"
             shift
             ;;
+        --diagnose|--diag|-d)
+            MODE="diagnose"
+            shift
+            ;;
+        --diagnose-upload|--diag-upload)
+            MODE="diagnose_upload"
+            shift
+            ;;
         --non-interactive|-n)
             NONINTERACTIVE=1
             shift
             ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
         --help|-h)
-            head -20 "$0" | grep -v '^#!/' | sed 's/^# //; s/^#//'
+            cat <<'EOF'
+OpenWB Trixie Installer
+
+Nutzung:
+  ./install.sh [OPTION]
+
+Optionen:
+  --venv, -v             Installation mit System-Python + venv (empfohlen)
+  --python39, --legacy   Installation mit Python 3.9.25 (Legacy)
+  --python314, --latest  Installation mit Python 3.14.4 + venv
+  --patches              Feature-Patches verwalten
+  --status, -s           Systemstatus anzeigen
+  --diagnose, -d         Diagnose-Archiv erzeugen
+  --diagnose-upload      Diagnose-Archiv erzeugen und hochladen (mit Hinweis)
+  --non-interactive, -n  Ohne Menü starten
+  --dry-run              Aktionen nur anzeigen, nicht ausführen
+  --help, -h             Diese Hilfe anzeigen
+EOF
             exit 0
             ;;
         *)
@@ -83,6 +120,41 @@ log_success() { echo -e "${GREEN}[$(date +'%H:%M:%S')] OK${NC} $1"; }
 log_warning() { echo -e "${YELLOW}[$(date +'%H:%M:%S')] WARN${NC} $1"; }
 log_error()   { echo -e "${RED}[$(date +'%H:%M:%S')] FEHLER${NC} $1"; }
 log_step()    { echo -e "\n${CYAN}━━━ $1 ━━━${NC}\n"; }
+log_dryrun()  { echo -e "${YELLOW}[$(date +'%H:%M:%S')] DRYRUN${NC} $1"; }
+
+run_cmd() {
+    if [ "${DRY_RUN:-0}" = "1" ]; then
+        log_dryrun "$*"
+        return 0
+    fi
+    "$@"
+}
+
+run_step() {
+    local step_title="$1"
+    shift
+    local start_ts end_ts elapsed
+    log_step "$step_title"
+    start_ts=$(date +%s)
+    "$@"
+    end_ts=$(date +%s)
+    elapsed=$((end_ts - start_ts))
+    log_success "$step_title abgeschlossen in ${elapsed}s"
+}
+
+# Diagnose-Funktionen auslagern (Wartbarkeit)
+if [ -f "$LIB_DIR/diagnostics.sh" ]; then
+    # shellcheck disable=SC1090
+    source "$LIB_DIR/diagnostics.sh"
+fi
+if [ -f "$LIB_DIR/preflight.sh" ]; then
+    # shellcheck disable=SC1090
+    source "$LIB_DIR/preflight.sh"
+fi
+if [ -f "$LIB_DIR/menu.sh" ]; then
+    # shellcheck disable=SC1090
+    source "$LIB_DIR/menu.sh"
+fi
 
 on_error() {
     local exit_code="$1"
@@ -137,7 +209,11 @@ is_trixie() {
             return 0
         fi
     fi
-    command -v lsb_release >/dev/null 2>&1 && lsb_release -c 2>/dev/null | grep -q "trixie"
+    if command -v lsb_release >/dev/null 2>&1; then
+        lsb_release -c 2>/dev/null | grep -q "trixie"
+        return $?
+    fi
+    return 1
 }
 
 detect_php_version() {
@@ -154,7 +230,7 @@ detect_php_version() {
 
 get_venv_python_version() {
     if [ -x "$VENV_DIR/bin/python3" ]; then
-        "$VENV_DIR/bin/python3" -c 'import sys; v=sys.version_info; print(f"{v.major}.{v_minor}")' 2>/dev/null
+        "$VENV_DIR/bin/python3" -c 'import sys; v=sys.version_info; print(f"{v.major}.{v.minor}")' 2>/dev/null
     fi
 }
 
@@ -172,16 +248,18 @@ ensure_free_space_mb() {
 # Hilfsfunktionen: System-Konfiguration
 # ============================================================================
 ensure_openwb_user() {
+    local user_groups
     if id "$OPENWB_USER" >/dev/null 2>&1; then
         log "Benutzer '$OPENWB_USER' existiert"
     else
         log "Erstelle Benutzer '$OPENWB_USER'..."
         sudo useradd -m -s /bin/bash "$OPENWB_USER"
     fi
-    if ! id -nG "$OPENWB_USER" | grep -qw sudo; then
+    user_groups="$(id -nG "$OPENWB_USER" 2>/dev/null || true)"
+    if ! printf '%s\n' "$user_groups" | grep -qw sudo; then
         sudo usermod -aG sudo "$OPENWB_USER"
     fi
-    if ! id -nG "$OPENWB_USER" | grep -qw gpio 2>/dev/null; then
+    if ! printf '%s\n' "$user_groups" | grep -qw gpio; then
         sudo groupadd gpio 2>/dev/null || true
         sudo usermod -aG gpio "$OPENWB_USER" 2>/dev/null || true
     fi
@@ -1034,104 +1112,6 @@ patches_apply_enabled() {
     done < "$PATCH_CONF"
 }
 
-ensure_whiptail() {
-    if ! test -t 0 2>/dev/null || ! test -t 1 2>/dev/null; then
-        return 1
-    fi
-    if command -v whiptail >/dev/null 2>&1; then
-        return 0
-    fi
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y whiptail 2>/dev/null
-    command -v whiptail >/dev/null 2>&1
-}
-
-whiptail_main_menu() {
-    local sys_py
-    sys_py=$(python3 --version 2>&1 | awk '{print $2}')
-
-    local sel
-    sel=$(whiptail --title "OpenWB · Debian Trixie Installer v${INSTALLER_VERSION}" \
-        --cancel-button "Beenden" \
-        --menu "\nInstallationsoption wählen:\n\nBuild: ${BUILD_ID}" 24 70 8 \
-        "1" "System-Python + venv       [EMPFOHLEN]  Python ${sys_py}" \
-        "2" "Python 3.9.25 kompilieren   [ORIGINAL]   ~30-60 Min" \
-        "3" "Python 3.14.4 + venv        [NEUESTE]    ~30-60 Min" \
-        "4" "Feature-Patches verwalten" \
-        "5" "Legacy Wallbox Module  !!EXPERIMENTAL!!" \
-        "6" "Tools installieren" \
-        "7" "Status anzeigen" \
-        "8" "Beenden" \
-        3>&1 1>&2 2>&3)
-
-    local rc=$?
-    [ $rc -ne 0 ] && echo "quit" && return
-
-    case "$sel" in
-        1)  echo "venv" ;;
-        2)  echo "python39" ;;
-        3)  echo "python314" ;;
-        4)  echo "patches" ;;
-        5)  echo "legacy_wallbox" ;;
-        6)  echo "tools" ;;
-        7)  echo "status" ;;
-        8)  echo "quit" ;;
-        "") echo "venv" ;;
-        *)  echo "quit" ;;
-    esac
-}
-
-text_main_menu() {
-    local sys_py
-    sys_py=$(python3 --version 2>&1 | awk '{print $2}')
-
-    echo ""
-    echo "  ┌──────────────────────────────────────────────────────────┐"
-    echo "  │              Was möchtest du tun?                        │"
-    echo "  ├──────────────────────────────────────────────────────────┤"
-    echo "  │                                                          │"
-    echo "  │   [1]  System-Python + venv              EMPFOHLEN      │"
-    echo "  │        Python ${sys_py} · Pakete isoliert im venv              │"
-    echo "  │        Dauer: ca. 10-15 Minuten                          │"
-    echo "  │                                                          │"
-    echo "  │   [2]  Python 3.9.25 kompilieren          ORIGINAL       │"
-    echo "  │        Kompiliert aus Quellcode, ersetzt System-Python   │"
-    echo "  │        Dauer: ca. 30-60 Minuten                          │"
-    echo "  │                                                          │"
-    echo "  │   [3]  Python 3.14.4 kompilieren + venv   NEUESTE        │"
-    echo "  │        Neuestes Python als Zusatz-Installation           │"
-    echo "  │        Dauer: ca. 30-60 Minuten                          │"
-    echo "  │                                                          │"
-    echo "  │   [4]  Feature-Patches verwalten                         │"
-    echo "  │                                                          │"
-    echo "  │   [5]  Legacy Wallbox Module  !!EXPERIMENTAL!!          │"
-    echo "  │        go-e / KEBA / SimpleEVSE evcc-optimiert           │"
-    echo "  │                                                          │"
-    echo "  │   [6]  Tools installieren (modbus-proxy u.a.)            │"
-    echo "  │                                                          │"
-    echo "  │   [7]  Status anzeigen                                   │"
-    echo "  │                                                          │"
-    echo "  │   [8]  Beenden                            build:${BUILD_ID} │"
-    echo "  │                                                          │"
-    echo "  └──────────────────────────────────────────────────────────┘"
-    echo ""
-
-    while true; do
-        read -p "  Deine Wahl [1/2/3/4/5/6/7/8]: " -n 1 -r < /dev/tty
-        echo
-        case "$REPLY" in
-            1|"") echo "venv"; return ;;
-            2)    echo "python39"; return ;;
-            3)    echo "python314"; return ;;
-            4)    echo "patches"; return ;;
-            5)    echo "legacy_wallbox"; return ;;
-            6)    echo "tools"; return ;;
-            7)    echo "status"; return ;;
-            8|q|Q) echo "quit"; return ;;
-            *)    echo "  Bitte 1-8 eingeben" ;;
-        esac
-    done
-}
-
 whiptail_patches_menu() {
     if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
         whiptail --title "Fehler" --msgbox "patches/ Verzeichnis nicht gefunden.\nBitte Repository aktualisieren." 10 50
@@ -1870,7 +1850,7 @@ show_status() {
     fi
 
     local remote_build
-    remote_build=$(git ls-remote --refs https://github.com/Xerolux/openwb-trixie.git HEAD 2>/dev/null | awk '{print substr($1,1,7)}')
+    remote_build=$(git ls-remote --refs https://github.com/Xerolux/openwb-trixie.git HEAD 2>/dev/null | awk '{print substr($1,1,7)}' || true)
 
     echo -e "  ${BB}│${W}    ${BOLD}Installiert:${W}  ${BG}${current_build}${W}"
     if [ -n "$remote_build" ]; then
@@ -1924,6 +1904,9 @@ show_status() {
     local post_update_status="fehlt"
     [ -f "$OPENWB_DIR/data/config/post-update.sh" ] && post_update_status="installiert"
     echo -e "  ${BB}│${W}  ${BOLD}Post-Update:${W}   ${post_update_status}"
+    if [ -f /tmp/openwb-trixie-last-diagnose-link.txt ]; then
+        echo -e "  ${BB}│${W}  ${BOLD}Letzter Diagnose-Link:${W} $(cat /tmp/openwb-trixie-last-diagnose-link.txt 2>/dev/null)"
+    fi
 
     echo -e "  ${BB}│${W}"
     echo -e "  ${BB}│${W}  ${CY}Web-Interface:${W}  http://${ip_addr:-?}"
@@ -1932,6 +1915,23 @@ show_status() {
 }
 
 main() {
+    if [ "$MODE" = "status" ]; then
+        show_status
+        exit 0
+    fi
+
+    if [ "$MODE" = "diagnose" ]; then
+        generate_diagnostics_bundle
+        exit 0
+    fi
+    if [ "$MODE" = "diagnose_upload" ]; then
+        local diag_file anon_file
+        diag_file="$(generate_diagnostics_bundle | tail -n1)"
+        anon_file="$(anonymize_diagnostics_bundle "$diag_file" | tail -n1)"
+        upload_diagnostics_bundle "$anon_file"
+        exit 0
+    fi
+
     if ! is_trixie; then
         log_error "Dies ist KEIN Debian Trixie System!"
         log_error "Bitte zuerst Debian Trixie installieren."
@@ -1951,7 +1951,11 @@ main() {
 
     while [ -z "$MODE" ]; do
         local choice=""
-        if [ $USE_WHIPTAIL -eq 0 ]; then
+        if command -v go >/dev/null 2>&1; then
+            choice=$(bubbletea_main_menu)
+        elif ensure_bubbletea_menu_tool; then
+            choice=$(gum_main_menu)
+        elif [ $USE_WHIPTAIL -eq 0 ]; then
             choice=$(whiptail_main_menu)
         else
             choice=$(text_main_menu)
@@ -2028,6 +2032,25 @@ main() {
                 fi
                 continue
                 ;;
+            diagnose)
+                generate_diagnostics_bundle
+                if [ $USE_WHIPTAIL -ne 0 ]; then
+                    echo ""
+                    read -p "  Enter drücken um fortzufahren..." -r < /dev/tty
+                fi
+                continue
+                ;;
+            diagnose_upload)
+                local diag_file anon_file
+                diag_file="$(generate_diagnostics_bundle | tail -n1)"
+                anon_file="$(anonymize_diagnostics_bundle "$diag_file" | tail -n1)"
+                upload_diagnostics_bundle "$anon_file"
+                if [ $USE_WHIPTAIL -ne 0 ]; then
+                    echo ""
+                    read -p "  Enter drücken um fortzufahren..." -r < /dev/tty
+                fi
+                continue
+                ;;
         esac
     done
 
@@ -2036,28 +2059,23 @@ main() {
         exit 0
     fi
 
-    if [ "$MODE" = "status" ]; then
-        show_status
-        exit 0
-    fi
-
     # Als openwb-User ausführen
     run_as_openwb_user
+    run_preflight_checks
 
     # ── Schritt 1: System aktualisieren ──
-    log_step "Schritt 1/8: System aktualisieren"
+    run_step "Schritt 1/8: System aktualisieren" true
     recover_dpkg_if_needed
-    sudo apt update
-    sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
+    run_cmd sudo apt update
+    run_cmd sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
 
     # ── Schritt 2: Deutsche Standards ──
-    log_step "Schritt 2/8: Deutsche Standards"
-    configure_german_defaults
+    run_step "Schritt 2/8: Deutsche Standards" configure_german_defaults
 
     # ── Schritt 3: Build-Abhängigkeiten ──
-    log_step "Schritt 3/8: Abhängigkeiten installieren"
+    run_step "Schritt 3/8: Abhängigkeiten installieren" true
     recover_dpkg_if_needed
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y \
+    run_cmd sudo DEBIAN_FRONTEND=noninteractive apt install -y \
         swig build-essential python3-dev python3-pip python3-venv \
         pkg-config libffi-dev libxml2-dev libxslt1-dev zlib1g-dev \
         git curl wget usbutils inotify-tools \
@@ -2065,22 +2083,22 @@ main() {
         mosquitto mosquitto-clients openssh-server
 
     if is_arm_arch && is_raspberry_pi; then
-        sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsmasq 2>/dev/null || true
+        run_cmd sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsmasq 2>/dev/null || true
     fi
 
     if is_arm_arch && is_raspberry_pi; then
-        sudo DEBIAN_FRONTEND=noninteractive apt install -y libgpiod-dev 2>/dev/null || true
+        run_cmd sudo DEBIAN_FRONTEND=noninteractive apt install -y libgpiod-dev 2>/dev/null || true
         if apt-cache show liblgpio-dev >/dev/null 2>&1; then
-            sudo DEBIAN_FRONTEND=noninteractive apt install -y liblgpio-dev
+            run_cmd sudo DEBIAN_FRONTEND=noninteractive apt install -y liblgpio-dev
         fi
         if apt-cache show python3-rpi-lgpio >/dev/null 2>&1; then
-            sudo DEBIAN_FRONTEND=noninteractive apt install -y python3-rpi-lgpio
+            run_cmd sudo DEBIAN_FRONTEND=noninteractive apt install -y python3-rpi-lgpio
         fi
     fi
     log_success "Abhängigkeiten installiert"
 
     # ── Schritt 4: Repository vorbereiten ──
-    log_step "Schritt 4/8: Repository vorbereiten"
+    run_step "Schritt 4/8: Repository vorbereiten" true
     verify_repo
     cd "$REPO_DIR"
     SCRIPT_DIR="$REPO_DIR"
@@ -2088,31 +2106,26 @@ main() {
     log_success "Repository bereit"
 
     # ── Schritt 5: GPIO ──
-    log_step "Schritt 5/8: GPIO-Konfiguration"
-    configure_gpio
+    run_step "Schritt 5/8: GPIO-Konfiguration" configure_gpio
 
     # ── Schritt 6: PHP ──
-    log_step "Schritt 6/8: PHP konfigurieren"
-    configure_php
+    run_step "Schritt 6/8: PHP konfigurieren" configure_php
 
     # ── Schritt 7: Python ──
     case "$MODE" in
         venv)
-            log_step "Schritt 7/8: Python venv erstellen"
-            do_python_venv
+            run_step "Schritt 7/8: Python venv erstellen" do_python_venv
             ;;
         python39)
-            log_step "Schritt 7/8: Python 3.9.25 kompilieren"
-            do_python_39
+            run_step "Schritt 7/8: Python 3.9.25 kompilieren" do_python_39
             ;;
         python314)
-            log_step "Schritt 7/8: Python 3.14.4 kompilieren + venv"
-            do_python_314
+            run_step "Schritt 7/8: Python 3.14.4 kompilieren + venv" do_python_314
             ;;
     esac
 
     # ── Schritt 8: OpenWB ──
-    log_step "Schritt 8/8: OpenWB installieren + patches"
+    run_step "Schritt 8/8: OpenWB installieren + patches" true
     do_openwb_install
     do_runtime_patches
     ensure_pip3_wrapper
@@ -2125,15 +2138,15 @@ main() {
 
     # Services starten
     log "Starte Services..."
-    sudo systemctl daemon-reload
+    run_cmd sudo systemctl daemon-reload
     for svc in mosquitto mosquitto_local; do
-        sudo systemctl enable "$svc" 2>/dev/null || true
-        sudo systemctl restart "$svc" 2>/dev/null || true
+        run_cmd sudo systemctl enable "$svc" 2>/dev/null || true
+        run_cmd sudo systemctl restart "$svc" 2>/dev/null || true
     done
-    sudo systemctl enable openwb2 2>/dev/null || true
-    sudo systemctl restart openwb2 2>/dev/null || true
+    run_cmd sudo systemctl enable openwb2 2>/dev/null || true
+    run_cmd sudo systemctl restart openwb2 2>/dev/null || true
     sleep 3
-    sudo systemctl restart openwb-simpleAPI 2>/dev/null || true
+    run_cmd sudo systemctl restart openwb-simpleAPI 2>/dev/null || true
 
     # Finale Überprüfung
     do_final_check

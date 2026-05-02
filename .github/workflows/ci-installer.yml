@@ -1,0 +1,27 @@
+name: installer-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64, armv7]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax checks
+        run: |
+          bash -n install.sh
+          bash -n lib/*.sh
+      - name: CLI smoke tests
+        run: |
+          bash install.sh --help >/dev/null
+          bash install.sh --status >/dev/null
+          bash install.sh --diagnose >/dev/null
+          DRY_RUN=1 bash install.sh --venv --non-interactive >/dev/null || true
+      - name: Report matrix arch
+        run: echo "Simulated target architecture: ${{ matrix.arch }}"
