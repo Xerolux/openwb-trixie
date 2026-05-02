@@ -187,6 +187,13 @@ ensure_openwb_user() {
         sudo chmod 440 "$sudoers_file"
         log "NOPASSWD sudo für '$OPENWB_USER' eingerichtet"
     fi
+    if [ "$(id -u)" = "0" ] && [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+        log_warning "Kein Terminal - überspringe Passwort-Setzung für '$OPENWB_USER'"
+    elif ! sudo passwd -S "$OPENWB_USER" 2>/dev/null | grep -q "P "; then
+        echo ""
+        log_warning "Bitte Passwort für Benutzer '$OPENWB_USER' vergeben:"
+        sudo passwd "$OPENWB_USER" < /dev/tty
+    fi
 }
 
 ensure_openwb_password_for_sudo() {
@@ -1645,7 +1652,7 @@ main() {
         pkg-config libffi-dev libxml2-dev libxslt1-dev zlib1g-dev \
         git curl wget usbutils dnsmasq inotify-tools \
         apache2 libapache2-mod-php php php-gd php-curl php-xml php-json \
-        mosquitto mosquitto-clients
+        mosquitto mosquitto-clients openssh-server
 
     if is_arm_arch && is_raspberry_pi; then
         sudo DEBIAN_FRONTEND=noninteractive apt install -y libgpiod-dev 2>/dev/null || true
