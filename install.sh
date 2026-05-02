@@ -22,7 +22,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="03e7452"
+BUILD_ID="${BUILD_ID:-$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && git rev-parse --short HEAD 2>/dev/null || echo "unknown")}"
 
 # ============================================================================
 # Argumente parsen
@@ -232,7 +232,7 @@ run_as_openwb_user() {
 
     if [ "$(id -u)" = "0" ]; then
         log "Starte Installer als Benutzer '$OPENWB_USER' (von root)..."
-        exec su - "$OPENWB_USER" -c "env OPENWB_RUN_AS_USER=1 MODE='$MODE' bash '$tmp' $*"
+        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
     else
         ensure_openwb_password_for_sudo
         log "Starte Installer als Benutzer '$OPENWB_USER'..."
