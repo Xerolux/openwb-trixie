@@ -978,7 +978,8 @@ patches_load_enabled() {
         sudo mkdir -p "$PATCH_DIR"
         sudo chown "$(id -un):$(id -un)" "$PATCH_DIR" 2>/dev/null || true
     fi
-    [ -f "$PATCH_CONF" ] || touch "$PATCH_CONF"
+    [ -f "$PATCH_CONF" ] || sudo touch "$PATCH_CONF"
+    sudo chown "$(id -un):$(id -un)" "$PATCH_CONF" 2>/dev/null || true
 }
 
 patch_is_enabled() {
@@ -1051,14 +1052,15 @@ whiptail_main_menu() {
     local sel
     sel=$(whiptail --title "OpenWB · Debian Trixie Installer v${INSTALLER_VERSION}" \
         --cancel-button "Beenden" \
-        --menu "\nInstallationsoption wählen:\n\nBuild: ${BUILD_ID}" 22 70 7 \
+        --menu "\nInstallationsoption wählen:\n\nBuild: ${BUILD_ID}" 24 70 8 \
         "1" "System-Python + venv       [EMPFOHLEN]  Python ${sys_py}" \
         "2" "Python 3.9.25 kompilieren   [ORIGINAL]   ~30-60 Min" \
         "3" "Python 3.14.4 + venv        [NEUESTE]    ~30-60 Min" \
         "4" "Feature-Patches verwalten" \
-        "5" "Tools installieren" \
-        "6" "Status anzeigen" \
-        "7" "Beenden" \
+        "5" "Legacy Wallbox Module  !!EXPERIMENTAL!!" \
+        "6" "Tools installieren" \
+        "7" "Status anzeigen" \
+        "8" "Beenden" \
         3>&1 1>&2 2>&3)
 
     local rc=$?
@@ -1069,9 +1071,10 @@ whiptail_main_menu() {
         2)  echo "python39" ;;
         3)  echo "python314" ;;
         4)  echo "patches" ;;
-        5)  echo "tools" ;;
-        6)  echo "status" ;;
-        7)  echo "quit" ;;
+        5)  echo "legacy_wallbox" ;;
+        6)  echo "tools" ;;
+        7)  echo "status" ;;
+        8)  echo "quit" ;;
         "") echo "venv" ;;
         *)  echo "quit" ;;
     esac
@@ -1100,27 +1103,31 @@ text_main_menu() {
     echo "  │                                                          │"
     echo "  │   [4]  Feature-Patches verwalten                         │"
     echo "  │                                                          │"
-    echo "  │   [5]  Tools installieren (modbus-proxy u.a.)            │"
+    echo "  │   [5]  Legacy Wallbox Module  !!EXPERIMENTAL!!          │"
+    echo "  │        go-e / KEBA / SimpleEVSE evcc-optimiert           │"
     echo "  │                                                          │"
-    echo "  │   [6]  Status anzeigen                                   │"
+    echo "  │   [6]  Tools installieren (modbus-proxy u.a.)            │"
     echo "  │                                                          │"
-    echo "  │   [7]  Beenden                            build:${BUILD_ID} │"
+    echo "  │   [7]  Status anzeigen                                   │"
+    echo "  │                                                          │"
+    echo "  │   [8]  Beenden                            build:${BUILD_ID} │"
     echo "  │                                                          │"
     echo "  └──────────────────────────────────────────────────────────┘"
     echo ""
 
     while true; do
-        read -p "  Deine Wahl [1/2/3/4/5/6/7]: " -n 1 -r < /dev/tty
+        read -p "  Deine Wahl [1/2/3/4/5/6/7/8]: " -n 1 -r < /dev/tty
         echo
         case "$REPLY" in
             1|"") echo "venv"; return ;;
             2)    echo "python39"; return ;;
             3)    echo "python314"; return ;;
             4)    echo "patches"; return ;;
-            5)    echo "tools"; return ;;
-            6)    echo "status"; return ;;
-            7|q|Q) echo "quit"; return ;;
-            *)    echo "  Bitte 1-7 eingeben" ;;
+            5)    echo "legacy_wallbox"; return ;;
+            6)    echo "tools"; return ;;
+            7)    echo "status"; return ;;
+            8|q|Q) echo "quit"; return ;;
+            *)    echo "  Bitte 1-8 eingeben" ;;
         esac
     done
 }
@@ -1315,6 +1322,236 @@ patches_menu() {
 }
 
 # ============================================================================
+# Legacy Wallbox Module (eigener Menüpunkt)
+# ============================================================================
+
+legacy_wallbox_ids() {
+    echo "legacy-wallbox-goe legacy-wallbox-keba legacy-wallbox-simpleevse"
+}
+
+whiptail_legacy_wallbox_menu() {
+    if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
+        whiptail --title "Fehler" --msgbox "patches/ Verzeichnis nicht gefunden." 10 50
+        return 1
+    fi
+
+    patches_load_enabled
+
+    local args=()
+    local patch_files=()
+
+    local wb_id
+    for wb_id in $(legacy_wallbox_ids); do
+        local pfile=""
+        for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+            [ -f "$f" ] || continue
+            if [ "$(patch_get_field "$f" "Id")" = "$wb_id" ]; then
+                pfile="$f"
+                break
+            fi
+        done
+        [ -z "$pfile" ] && continue
+        if ! patch_matches_arch "$pfile"; then
+            continue
+        fi
+
+        local name desc
+        name=$(patch_get_field "$pfile" "Name")
+        desc=$(patch_get_field "$pfile" "Desc")
+
+        patch_files+=("$wb_id")
+        if patch_is_enabled "$wb_id"; then
+            args+=("$wb_id" "$name — $desc" "ON")
+        else
+            args+=("$wb_id" "$name — $desc" "OFF")
+        fi
+    done
+
+    if [ ${#args[@]} -eq 0 ]; then
+        whiptail --title "Legacy Wallbox Module" --msgbox "Keine Legacy-Wallbox-Module gefunden.\nBitte Repository aktualisieren." 10 55
+        return 0
+    fi
+
+    local selected
+    selected=$(whiptail --title "Legacy Wallbox Module" \
+        --cancel-button "Zurück" \
+        --checklist "\n[*] = installiert    [ ] = verfügbar\n\nLegacy Wallbox-Module fuer openWB 2.x.\nDiese Module wurden aus evcc-Code abgeleitet und\nfuer openWB 2.x angepasst. Sie werden nach\nOpenWB-Updates automatisch reinstalliert.\n\nHINWEIS: Nicht auf echter Hardware getestet!" \
+        20 78 ${#patch_files[@]} \
+        "${args[@]}" \
+        3>&1 1>&2 2>&3)
+
+    local rc=$?
+    [ $rc -ne 0 ] && return 0
+
+    local sel_pids=()
+    eval 'for w in '$selected'; do sel_pids+=("$w"); done'
+
+    for wb_id in "${patch_files[@]}"; do
+        local is_sel=false
+        for sp in "${sel_pids[@]}"; do
+            [ "$wb_id" = "$sp" ] && is_sel=true && break
+        done
+
+        local pfile=""
+        for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+            [ -f "$f" ] || continue
+            if [ "$(patch_get_field "$f" "Id")" = "$wb_id" ]; then
+                pfile="$f"
+                break
+            fi
+        done
+        [ -z "$pfile" ] && continue
+
+        export OPENWB_DIR VENV_DIR PATCHES_SRC_DIR REPO_DIR
+        source "$pfile"
+
+        if [ "$is_sel" = true ] && ! patch_is_enabled "$wb_id"; then
+            if patch_apply; then
+                patch_enable "$wb_id"
+            fi
+        elif [ "$is_sel" = false ] && patch_is_enabled "$wb_id"; then
+            if patch_revert; then
+                patch_disable "$wb_id"
+            fi
+        fi
+    done
+
+    whiptail --title "Fertig" --msgbox "Legacy Wallbox-Änderungen angewendet.\nAktivierte Module werden nach OpenWB-Updates\nautomatisch reinstalliert.\n\nopenWB neu starten: sudo systemctl restart openwb2" 12 55
+}
+
+legacy_wallbox_menu() {
+    if [ ! -d "$PATCHES_SRC_DIR/patches" ]; then
+        log_error "patches/ Verzeichnis nicht gefunden"
+        return 1
+    fi
+
+    patches_load_enabled
+
+    local BOLD='\033[1m' DIM='\033[2m' W='\033[0m'
+    local GR='\033[0;32m' BG='\033[1;32m' BB='\033[1;34m'
+    local BY='\033[1;33m' RED='\033[0;31m' CY='\033[0;36m'
+
+    while true; do
+        local count=0
+        local wb_ids=()
+
+        echo ""
+        echo -e "  ${BB}┌──────────────────────────────────────────────────────────┐${W}"
+        echo -e "  ${BB}│${W}        ${BOLD}Legacy Wallbox Module (evcc-optimiert)${W}              ${BB}│${W}"
+        echo -e "  ${BB}├──────────────────────────────────────────────────────────┤${W}"
+        echo -e "  ${BB}│${W}  ${DIM}Module fuer openWB 2.x, nicht auf Hardware getestet${W}      ${BB}│${W}"
+        echo -e "  ${BB}├──────────────────────────────────────────────────────────┤${W}"
+
+        local wb_id
+        for wb_id in $(legacy_wallbox_ids); do
+            local pfile=""
+            for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+                [ -f "$f" ] || continue
+                if [ "$(patch_get_field "$f" "Id")" = "$wb_id" ]; then
+                    pfile="$f"
+                    break
+                fi
+            done
+            [ -z "$pfile" ] && continue
+            if ! patch_matches_arch "$pfile"; then
+                continue
+            fi
+
+            local name desc
+            name=$(patch_get_field "$pfile" "Name")
+            desc=$(patch_get_field "$pfile" "Desc")
+
+            count=$((count + 1))
+            wb_ids+=("$wb_id")
+
+            if patch_is_enabled "$wb_id"; then
+                echo -e "  ${BB}│${W}  ${GR}[${count}] INSTALLED${W}  ${BOLD}${name}${W}"
+            else
+                echo -e "  ${BB}│${W}  ${BY}[${count}] verfügbar${W}   ${name}${W}"
+            fi
+            echo -e "  ${BB}│${W}       ${DIM}${desc}${W}"
+        done
+
+        echo -e "  ${BB}│${W}                                                          ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM}[0] Zurück zum Hauptmenü${W}                                ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${DIM}[r] Modul entfernen${W}                                   ${BB}│${W}"
+        echo -e "  ${BB}└──────────────────────────────────────────────────────────┘${W}"
+        echo ""
+
+        echo -ne "  ${BOLD}Wahl${W} [0-${count}/r]: "
+        read -n 1 -r < /dev/tty
+        echo
+
+        case "$REPLY" in
+            0|"") return 0 ;;
+            r|R)
+                echo -ne "  Modul-Nummer zum ${RED}Entfernen${W}: "
+                read -r num < /dev/tty
+                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "$count" ]; then
+                    local pid="${wb_ids[$((num-1))]}"
+                    local pfile=""
+                    for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+                        [ -f "$f" ] || continue
+                        if [ "$(patch_get_field "$f" "Id")" = "$pid" ]; then
+                            pfile="$f"
+                            break
+                        fi
+                    done
+                    [ -z "$pfile" ] && continue
+                    export OPENWB_DIR VENV_DIR PATCHES_SRC_DIR REPO_DIR
+                    source "$pfile"
+                    if patch_revert; then
+                        patch_disable "$pid"
+                        log_success "Modul '$pid' entfernt und deaktiviert"
+                    else
+                        log_error "Modul '$pid' konnte nicht entfernt werden"
+                    fi
+                else
+                    echo -e "  ${RED}Ungültige Nummer${W}"
+                fi
+                continue
+                ;;
+        esac
+
+        if [[ "$REPLY" =~ ^[0-9]+$ ]] && [ "$REPLY" -ge 1 ] && [ "$REPLY" -le "$count" ]; then
+            local pid="${wb_ids[$((REPLY-1))]}"
+            local pfile=""
+            for f in "$PATCHES_SRC_DIR"/patches/*.sh; do
+                [ -f "$f" ] || continue
+                if [ "$(patch_get_field "$f" "Id")" = "$pid" ]; then
+                    pfile="$f"
+                    break
+                fi
+            done
+            [ -z "$pfile" ] && continue
+            export OPENWB_DIR VENV_DIR PATCHES_SRC_DIR REPO_DIR
+            source "$pfile"
+
+            if patch_is_enabled "$pid"; then
+                echo -e "  ${GR}Modul '$pid' ist bereits installiert.${W}"
+                echo -ne "  Entfernen? (j/N): "
+                read -n 1 -r yn < /dev/tty
+                echo
+                if [[ "$yn" =~ ^[JjYy]$ ]]; then
+                    if patch_revert; then
+                        patch_disable "$pid"
+                        log_success "Modul '$pid' entfernt und deaktiviert"
+                    fi
+                fi
+            else
+                echo -e "  Installiere '${BOLD}$(patch_get_field "$pfile" "Name")${W}'..."
+                if patch_apply; then
+                    patch_enable "$pid"
+                    log_success "Modul '$pid' installiert und aktiviert"
+                else
+                    log_error "Modul '$pid' konnte nicht installiert werden"
+                fi
+            fi
+        fi
+    done
+}
+
+# ============================================================================
 # Tools (modular, installierbar/entfernbar)
 # ============================================================================
 TOOLS_SRC_DIR=""
@@ -1336,10 +1573,11 @@ tool_get_field() {
 
 tools_load_enabled() {
     if [ ! -d "$TOOL_DIR" ]; then
-        mkdir -p "$TOOL_DIR"
-        chown "$OPENWB_USER:$OPENWB_USER" "$TOOL_DIR" 2>/dev/null || true
+        sudo mkdir -p "$TOOL_DIR"
+        sudo chown "$OPENWB_USER:$OPENWB_USER" "$TOOL_DIR" 2>/dev/null || true
     fi
-    [ -f "$TOOL_CONF" ] || touch "$TOOL_CONF"
+    [ -f "$TOOL_CONF" ] || sudo touch "$TOOL_CONF"
+    sudo chown "$OPENWB_USER:$OPENWB_USER" "$TOOL_CONF" 2>/dev/null || true
 }
 
 tool_is_enabled() {
@@ -1516,10 +1754,10 @@ do_patches_mode() {
         return 1
     fi
 
-    mkdir -p "$PATCH_DIR"
-    chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
-    touch "$PATCH_CONF" 2>/dev/null || true
-    chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
+    sudo mkdir -p "$PATCH_DIR"
+    sudo chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
+    sudo touch "$PATCH_CONF" 2>/dev/null || true
+    sudo chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
 
     run_as_openwb_user
 
@@ -1732,10 +1970,10 @@ main() {
                     continue
                 fi
 
-                mkdir -p "$PATCH_DIR"
-                chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
-                touch "$PATCH_CONF" 2>/dev/null || true
-                chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
+                sudo mkdir -p "$PATCH_DIR"
+                sudo chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_DIR" 2>/dev/null || true
+                sudo touch "$PATCH_CONF" 2>/dev/null || true
+                sudo chown "$OPENWB_USER:$OPENWB_USER" "$PATCH_CONF" 2>/dev/null || true
 
                 run_as_openwb_user
 
@@ -1761,6 +1999,25 @@ main() {
                 run_as_openwb_user
                 TOOLS_SRC_DIR="$REPO_DIR"
                 whiptail_tools_menu
+                continue
+                ;;
+            legacy_wallbox)
+                if [ ! -d "$OPENWB_DIR" ]; then
+                    if [ $USE_WHIPTAIL -eq 0 ]; then
+                        whiptail --title "Fehler" --msgbox "OpenWB ist noch nicht installiert!\nBitte zuerst Option 1, 2 oder 3 ausführen." 10 55
+                    else
+                        log_error "OpenWB ist noch nicht installiert!"
+                    fi
+                    continue
+                fi
+
+                run_as_openwb_user
+                PATCHES_SRC_DIR="$REPO_DIR"
+                if [ $USE_WHIPTAIL -eq 0 ]; then
+                    whiptail_legacy_wallbox_menu
+                else
+                    legacy_wallbox_menu
+                fi
                 continue
                 ;;
             status)

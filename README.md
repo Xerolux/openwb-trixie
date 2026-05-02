@@ -15,7 +15,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/i
 
 ## Menü
 
-Beim Start erscheint ein whiptail-Menü mit 6 Optionen:
+Beim Start erscheint ein whiptail-Menü mit 8 Optionen:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -33,15 +33,20 @@ Beim Start erscheint ein whiptail-Menü mit 6 Optionen:
 │                                                      │
 │  [4] Feature-Patches verwalten                       │
 │                                                      │
-│  [5] Tools installieren                              │
+│  [5] Legacy Wallbox Module  !!EXPERIMENTAL!!         │
+│      go-e / KEBA / SimpleEVSE evcc-optimiert         │
 │                                                      │
-│  [6] Beenden                                         │
+│  [6] Tools installieren                              │
+│                                                      │
+│  [7] Status anzeigen                                 │
+│                                                      │
+│  [8] Beenden                                         │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
 
 Optionen 1–3 installieren OpenWB komplett (System-Update → Abhängigkeiten → Python → OpenWB → Patches).\
-Optionen 4 und 5 sind nach der Installation verfügbar und kehren danach ins Menü zurück.
+Optionen 4–6 sind nach der Installation verfügbar und kehren danach ins Menü zurück.
 
 ### Non-Interactive
 
@@ -83,6 +88,23 @@ Update-sichere Patches die nach jedem OpenWB-Update automatisch reapplied werden
 
 Patches werden über Menü-Option 4 verwaltet (installieren/entfernen).\
 Aktivierte Patches werden in `/opt/openwb-patches/enabled.conf` gespeichert.
+
+## Legacy Wallbox Module !!EXPERIMENTAL!!
+
+> **WARNUNG:** Diese Module haben KEINERLEI offizielle Verbindung zu openWB!
+> Inoffiziell, experimentell, **nie auf echter Hardware getestet**.
+> Ausschliesslich auf eigene Gefar, kein Support, keine Haftung.
+> Siehe [openwb_legacy_wallboxes_evcc_optimized/README.md](openwb_legacy_wallboxes_evcc_optimized/README.md).
+
+Jede Wallbox kann einzeln installiert/entfernt werden (Menü-Option 5).
+Aktivierte Module werden nach OpenWB-Updates automatisch reinstalliert.
+Im Web-Interface erscheinen sie im Ladepunkt-Dropdown (Konfiguration als JSON).
+
+| Modul | Protokoll | Features |
+|-------|-----------|----------|
+| **go-eCharger** | HTTP V1/V2 API | Auto-Erkennung, Phasenumschaltung (v2), RFID |
+| **KEBA** | UDP Port 7090 | Reports 2/3/100, RFID-Autorisierung, Display |
+| **SimpleEVSE WiFi** | HTTP API | setStatus/setCurrent, best-effort Phasen |
 
 ## Tools
 
