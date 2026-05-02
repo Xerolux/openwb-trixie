@@ -1624,7 +1624,9 @@ show_status() {
 
     local current_build
     if [ -d "$REPO_DIR/.git" ]; then
-        current_build=$(cd "$REPO_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "?")
+        current_build=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
+    elif [ -d "$SCRIPT_DIR/.git" ]; then
+        current_build=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
     else
         current_build="${BUILD_ID:-?}"
     fi
@@ -1676,8 +1678,14 @@ show_status() {
 
     echo -e "  ${BB}├─────────────────────────────────────────────────────────────┤${W}"
     echo -e "  ${BB}│${W}  ${BOLD}Boot-Service:${W}  $(systemctl is-active openwb-trixie-boot.service 2>/dev/null || echo "?")"
-    echo -e "  ${BB}│${W}  ${BOLD}pip3-Wrapper:${W}  $(if [ -f /usr/local/bin/pip3 ] && head -1 /usr/local/bin/pip3 2>/dev/null | grep -q openwb-venv; then echo '${GR}aktiv${W}'; else echo '${RED}fehlt${W}'; fi)"
-    echo -e "  ${BB}│${W}  ${BOLD}Post-Update:${W}   $(if [ -f "$OPENWB_DIR/data/config/post-update.sh" ]; then echo '${GR}installiert${W}'; else echo '${RED}fehlt${W}'; fi)"
+
+    local pip3_status="fehlt"
+    [ -f /usr/local/bin/pip3 ] && head -1 /usr/local/bin/pip3 2>/dev/null | grep -q openwb-venv && pip3_status="aktiv"
+    echo -e "  ${BB}│${W}  ${BOLD}pip3-Wrapper:${W}  ${pip3_status}"
+
+    local post_update_status="fehlt"
+    [ -f "$OPENWB_DIR/data/config/post-update.sh" ] && post_update_status="installiert"
+    echo -e "  ${BB}│${W}  ${BOLD}Post-Update:${W}   ${post_update_status}"
 
     echo -e "  ${BB}│${W}"
     echo -e "  ${BB}│${W}  ${CY}Web-Interface:${W}  http://${ip_addr:-?}"
