@@ -44,6 +44,7 @@ fi
 req="$OPENWB_DIR/requirements.txt"
 if [ -f "$req" ]; then
     sed -i -E '/^pymodbus==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' "$req"
+    sed -i -E '/^paho-mqtt==/!s/==[0-9][0-9.a-zA-Z+-]*[[:space:]]*$//' "$req"
     log "requirements.txt gepatcht"
 fi
 
