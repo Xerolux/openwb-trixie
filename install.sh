@@ -778,7 +778,6 @@ REQ="${OPENWBBASEDIR:-/var/www/html/openWB}/requirements.txt"
 sed -i -E \
     -e 's/^grpcio==1\.60\.1/grpcio==1.71.0/' \
     -e 's/^lxml==4\.9\.[0-9]+/lxml==5.3.2/' \
-    -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+/# jq removed (Python 3.13)/' \
     "$REQ"
 PATCHEOF
     chmod +x "$patch_req"
@@ -819,10 +818,6 @@ PATCHEOF
     fi
 
     sed -i '2i set -Eeuo pipefail' "$install_script"
-
-    if [ "$MODE" = "venv" ] || [ "$MODE" = "python314" ]; then
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y jq
-    fi
 
     log "Führe OpenWB Installer aus..."
     sudo DEBIAN_FRONTEND=noninteractive bash "$install_script"
@@ -888,7 +883,6 @@ do_runtime_patches() {
         if [ -f "$req" ]; then
             log "Patche requirements.txt für Python 3.13..."
             sudo sed -E -i \
-                -e 's/^jq==[0-9]+\.[0-9]+\.[0-9]+([[:space:]]*)$/# jq entfernt (System-jq via apt)\1/' \
                 -e 's/^lxml==4\.9\.[0-9]+([[:space:]]*)$/lxml==5.3.2\1/' \
                 -e 's/^grpcio==1\.60\.1([[:space:]]*)$/grpcio==1.71.0\1/' \
                 "$req"
