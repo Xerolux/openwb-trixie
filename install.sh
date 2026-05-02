@@ -852,6 +852,37 @@ do_runtime_patches() {
     log_success "Runtime Patches angewendet"
 }
 
+install_boot_service() {
+    local boot_script="$SCRIPT_DIR/openwb-trixie-boot.sh"
+    if [ ! -f "$boot_script" ]; then
+        log_warning "Boot-Service Skript nicht gefunden: $boot_script"
+        return 0
+    fi
+
+    sudo cp "$boot_script" /opt/openwb-trixie-boot.sh
+    sudo chmod 755 /opt/openwb-trixie-boot.sh
+
+    sudo tee /etc/systemd/system/openwb-trixie-boot.service > /dev/null <<'EOF'
+[Unit]
+Description=OpenWB Trixie Boot Patches
+Before=openwb2.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openwb-trixie-boot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable openwb-trixie-boot.service >/dev/null 2>&1
+    log_success "Boot-Service installiert (läuft vor openwb2 bei jedem Start)"
+}
+
 ensure_pip3_wrapper() {
     if [ "$MODE" != "venv" ] && [ "$MODE" != "python314" ]; then
         return 0
@@ -1703,6 +1734,7 @@ main() {
     do_runtime_patches
     ensure_pip3_wrapper
     fix_openwb_homedir
+    install_boot_service
     do_post_update_hook
 
     # Bereits aktivierte Feature-Patches anwenden (ohne Menü)
