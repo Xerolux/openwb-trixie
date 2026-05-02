@@ -211,8 +211,6 @@ run_as_openwb_user() {
         export OPENWB_RUN_AS_USER=1
         return 0
     fi
-    ensure_openwb_password_for_sudo
-    log "Starte Installer als Benutzer '$OPENWB_USER'..."
 
     local tmp="/tmp/openwb-trixie-install-$$.sh"
     case "$0" in
@@ -231,7 +229,15 @@ run_as_openwb_user() {
     esac
     chmod a+r "$tmp"
     trap 'rm -f "$tmp"' EXIT
-    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
+
+    if [ "$(id -u)" = "0" ]; then
+        log "Starte Installer als Benutzer '$OPENWB_USER' (von root)..."
+        exec su - "$OPENWB_USER" -c "env OPENWB_RUN_AS_USER=1 MODE='$MODE' bash '$tmp' $*"
+    else
+        ensure_openwb_password_for_sudo
+        log "Starte Installer als Benutzer '$OPENWB_USER'..."
+        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
+    fi
 }
 
 recover_dpkg_if_needed() {
@@ -1510,13 +1516,31 @@ ensure_repo() {
     if [ -d "$REPO_DIR" ]; then
         cd "$REPO_DIR"
         git pull --ff-only 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
-        return 0
+        if [ -f "$REPO_DIR/requirements.txt" ]; then
+            return 0
+        fi
+        log_warning "Repository vorhanden aber unvollständig, klone neu..."
+        cd /tmp
+        sudo rm -rf "$REPO_DIR"
     fi
 
     log "Bereite Repository vor..."
     sudo mkdir -p "$REPO_DIR"
     sudo chown "$(id -un):$(id -gn)" "$REPO_DIR" 2>/dev/null || true
-    git clone https://github.com/Xerolux/openwb-trixie.git "$REPO_DIR" 2>/dev/null || true
+    if ! git clone https://github.com/Xerolux/openwb-trixie.git "$REPO_DIR"; then
+        log_error "git clone fehlgeschlagen - prüfe Netzwerkverbindung"
+        sudo rm -rf "$REPO_DIR"
+        exit 1
+    fi
+}
+
+verify_repo() {
+    if [ ! -d "$REPO_DIR/.git" ] || [ ! -f "$REPO_DIR/requirements.txt" ]; then
+        log_error "Repository nicht gefunden oder unvollständig: $REPO_DIR"
+        log_error "Bitte erneut starten oder manuell klonen:"
+        log_error "  git clone https://github.com/Xerolux/openwb-trixie.git $REPO_DIR"
+        exit 1
+    fi
 }
 
 main() {
@@ -1633,6 +1657,7 @@ main() {
 
     # ── Schritt 4: Repository vorbereiten ──
     log_step "Schritt 4/8: Repository vorbereiten"
+    verify_repo
     cd "$REPO_DIR"
     SCRIPT_DIR="$REPO_DIR"
     PATCHES_SRC_DIR="$REPO_DIR"
