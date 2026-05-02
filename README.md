@@ -1,6 +1,6 @@
 # OpenWB Trixie Installer
 
-Installiert OpenWB auf frischen Debian Trixie Systemen — mit whiptail-Menü, Feature-Patches und optionalen Tools.
+Installiert OpenWB auf frischen Debian Trixie Systemen — mit modernem TUI-Menü (Bubble Tea), Fallback-Menüs, Feature-Patches und optionalen Tools.
 
 ## Schnellstart
 
@@ -15,7 +15,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Xerolux/openwb-trixie/main/i
 
 ## Menü
 
-Beim Start erscheint ein whiptail-Menü mit 8 Optionen:
+Beim Start erscheint ein Menü mit Bubble Tea (wenn Go verfügbar), sonst `gum`, sonst `whiptail`, sonst Text-Fallback.
+Es stehen 10 Optionen zur Verfügung:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -40,13 +41,17 @@ Beim Start erscheint ein whiptail-Menü mit 8 Optionen:
 │                                                      │
 │  [7] Status anzeigen                                 │
 │                                                      │
-│  [8] Beenden                                         │
+│  [8] Diagnose-Archiv erstellen                       │
+│                                                      │
+│  [9] Diagnose anonymisieren + hochladen              │
+│                                                      │
+│ [10] Beenden                                         │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
 
 Optionen 1–3 installieren OpenWB komplett (System-Update → Abhängigkeiten → Python → OpenWB → Patches).\
-Optionen 4–6 sind nach der Installation verfügbar und kehren danach ins Menü zurück.
+Optionen 4–9 sind nach der Installation verfügbar und kehren danach ins Menü zurück.
 
 ### Non-Interactive
 
@@ -55,8 +60,24 @@ Optionen 4–6 sind nach der Installation verfügbar und kehren danach ins Menü
 bash install.sh --venv              # Option 1
 bash install.sh --python39          # Option 2
 bash install.sh --python314         # Option 3
+bash install.sh --status            # Nur Status
+bash install.sh --diagnose          # Diagnose-Archiv erzeugen
+bash install.sh --diagnose-upload   # Anonymisieren + Upload
 bash install.sh --non-interactive   # Option 1 automatisch
+bash install.sh --dry-run --venv    # Install-Plan ohne Änderungen
 ```
+
+### Support-Flow (Empfohlen)
+
+1. Diagnose erzeugen + anonymisieren + hochladen:
+   ```bash
+   DIAG_UPLOAD_CONSENT=1 bash install.sh --diagnose-upload
+   ```
+2. Link direkt aus der Ausgabe kopieren **oder** später anzeigen:
+   ```bash
+   bash install.sh --status
+   ```
+3. Link an Maintainer/Git-Author senden.
 
 ## Python-Optionen im Vergleich
 
@@ -233,18 +254,33 @@ sudo systemctl restart mosquitto mosquitto_local openwb2 openwb-simpleAPI
 ./install.sh [OPTION]
 
 Optionen:
-  --venv, -v          System-Python + venv (Option 1)
-  --python39, -l      Python 3.9.25 kompilieren (Option 2)
-  --python314, -p     Python 3.14.4 kompilieren + venv (Option 3)
-  --non-interactive   Keine Rückfragen (wählt Option 1)
-  --help, -h          Hilfe anzeigen
+  --venv, -v             System-Python + venv (Option 1)
+  --python39, -l         Python 3.9.25 kompilieren (Option 2)
+  --python314, -p        Python 3.14.4 kompilieren + venv (Option 3)
+  --status, -s           Status anzeigen
+  --diagnose, -d         Diagnose-Archiv erstellen
+  --diagnose-upload      Diagnose anonymisieren + hochladen
+  --patches              Feature-Patches verwalten
+  --non-interactive, -n  Keine Rückfragen (wählt Option 1)
+  --dry-run              Install-Plan anzeigen, nichts ändern
+  --diagnose-upload      Diagnose anonymisieren + hochladen
+  --help, -h             Hilfe anzeigen
 ```
+
+Umgebungsvariablen:
+- `DIAG_UPLOAD_CONSENT=1` erlaubt Upload im non-interactive Modus.
+- `PASTE_UPLOAD_URL` setzt den primären Upload-Endpoint.
+- `PASTE_UPLOAD_URL_BACKUP` optionaler Fallback-Endpoint bei Upload-Fehlern.
 
 ## Dateien im Repository
 
 | Datei | Beschreibung |
 |-------|-------------|
-| `install.sh` | Haupt-Installer mit whiptail-Menü |
+| `install.sh` | Haupt-Installer (lädt Menü-/Diagnose-/Preflight-Module) |
+| `lib/menu.sh` | Bubble Tea/gum/whiptail/text Menülogik |
+| `lib/bubbletea_menu.go` | Natives Bubble Tea Menü |
+| `lib/diagnostics.sh` | Diagnose erzeugen/anonymisieren/hochladen |
+| `lib/preflight.sh` | Preflight-Checks vor Installation |
 | `openwb_post_update_hook.sh` | Post-Update Hook (automatisch installiert) |
 | `requirements.txt` | Python-Pakete fürs venv |
 | `patches/` | Feature-Patches (modular, update-sicher) |
@@ -262,4 +298,3 @@ Dieses Repository stellt lediglich einen Installer und ergaenzende Module fuer d
 **openWB Projekt:** https://github.com/openWB/core
 
 Siehe auch [LICENSE](LICENSE) (MIT).
-
