@@ -330,54 +330,6 @@ ensure_mosquitto_local_unit() {
         return 0
     fi
 
-    if [ ! -f "/etc/init.d/mosquitto_local" ]; then
-        log "Erstelle mosquitto_local Init-Script..."
-        sudo tee /etc/init.d/mosquitto_local > /dev/null <<'INITEOF'
-#!/bin/bash
-### BEGIN INIT INFO
-# Provides:          mosquitto_local
-# Required-Start:    $network $remote_fs
-# Required-Stop:     $network $remote_fs
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Description:       Mosquitto Local Instance for openWB
-### END INIT INFO
-PIDFILE=/run/mosquitto_local.pid
-CONF=/etc/mosquitto/mosquitto_local.conf
-
-start() {
-    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-        echo "mosquitto_local already running"
-        return 0
-    fi
-    mkdir -p /var/log/openWB
-    mosquitto -c "$CONF" -d -p 1885
-    pgrep -f "mosquitto.*-p 1885" > "$PIDFILE" 2>/dev/null || true
-}
-
-stop() {
-    if [ -f "$PIDFILE" ]; then
-        kill "$(cat "$PIDFILE")" 2>/dev/null || true
-        rm -f "$PIDFILE"
-    fi
-}
-
-restart() {
-    stop
-    sleep 1
-    start
-}
-
-case "$1" in
-    start)   start   ;;
-    stop)    stop    ;;
-    restart) restart ;;
-    *)       echo "Usage: $0 {start|stop|restart}" ;;
-esac
-INITEOF
-        sudo chmod +x /etc/init.d/mosquitto_local
-    fi
-
     if [ ! -f "/etc/mosquitto/mosquitto_local.conf" ]; then
         sudo tee /etc/mosquitto/mosquitto_local.conf > /dev/null <<'CONFEOF'
 listener 1885 127.0.0.1
@@ -395,9 +347,7 @@ Wants=network-online.target
 
 [Service]
 Type=forking
-ExecStart=/etc/init.d/mosquitto_local start
-ExecStop=/etc/init.d/mosquitto_local stop
-ExecReload=/etc/init.d/mosquitto_local restart
+ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto_local.conf -d
 PIDFile=/run/mosquitto_local.pid
 TimeoutSec=60
 Restart=on-failure
@@ -407,6 +357,7 @@ WantedBy=multi-user.target
 EOF
     sudo systemctl daemon-reload
     sudo systemctl enable mosquitto_local >/dev/null 2>&1 || true
+    sudo systemctl mask mosquitto_local-sysv 2>/dev/null || true
 }
 
 # ============================================================================

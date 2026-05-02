@@ -155,9 +155,8 @@ Wants=network-online.target
 
 [Service]
 Type=forking
-ExecStart=/etc/init.d/mosquitto_local start
-ExecStop=/etc/init.d/mosquitto_local stop
-ExecReload=/etc/init.d/mosquitto_local restart
+ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto_local.conf -d
+PIDFile=/run/mosquitto_local.pid
 TimeoutSec=60
 Restart=on-failure
 
@@ -166,6 +165,7 @@ WantedBy=multi-user.target
 EOF
         systemctl daemon-reload
         systemctl enable mosquitto_local >/dev/null 2>&1 || true
+        systemctl mask mosquitto_local-sysv 2>/dev/null || true
     fi
 
     # PHP Upload-Limit
