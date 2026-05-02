@@ -1057,13 +1057,14 @@ whiptail_main_menu() {
     local sel
     sel=$(whiptail --title "OpenWB · Debian Trixie Installer v${INSTALLER_VERSION}" \
         --cancel-button "Beenden" \
-        --menu "\nInstallationsoption wählen:\n\nBuild: ${BUILD_ID}" 20 70 6 \
+        --menu "\nInstallationsoption wählen:\n\nBuild: ${BUILD_ID}" 22 70 7 \
         "1" "System-Python + venv       [EMPFOHLEN]  Python ${sys_py}" \
         "2" "Python 3.9.25 kompilieren   [ORIGINAL]   ~30-60 Min" \
         "3" "Python 3.14.4 + venv        [NEUESTE]    ~30-60 Min" \
         "4" "Feature-Patches verwalten" \
         "5" "Tools installieren" \
-        "6" "Beenden" \
+        "6" "Status anzeigen" \
+        "7" "Beenden" \
         3>&1 1>&2 2>&3)
 
     local rc=$?
@@ -1075,7 +1076,8 @@ whiptail_main_menu() {
         3)  echo "python314" ;;
         4)  echo "patches" ;;
         5)  echo "tools" ;;
-        6)  echo "quit" ;;
+        6)  echo "status" ;;
+        7)  echo "quit" ;;
         "") echo "venv" ;;
         *)  echo "quit" ;;
     esac
@@ -1106,13 +1108,15 @@ text_main_menu() {
     echo "  │                                                          │"
     echo "  │   [5]  Tools installieren (modbus-proxy u.a.)            │"
     echo "  │                                                          │"
-    echo "  │   [6]  Beenden                            build:${BUILD_ID} │"
+    echo "  │   [6]  Status anzeigen                                   │"
+    echo "  │                                                          │"
+    echo "  │   [7]  Beenden                            build:${BUILD_ID} │"
     echo "  │                                                          │"
     echo "  └──────────────────────────────────────────────────────────┘"
     echo ""
 
     while true; do
-        read -p "  Deine Wahl [1/2/3/4/5]: " -n 1 -r < /dev/tty
+        read -p "  Deine Wahl [1/2/3/4/5/6/7]: " -n 1 -r < /dev/tty
         echo
         case "$REPLY" in
             1|"") echo "venv"; return ;;
@@ -1120,8 +1124,9 @@ text_main_menu() {
             3)    echo "python314"; return ;;
             4)    echo "patches"; return ;;
             5)    echo "tools"; return ;;
-            6|q|Q) echo "quit"; return ;;
-            *)    echo "  Bitte 1-6 eingeben" ;;
+            6)    echo "status"; return ;;
+            7|q|Q) echo "quit"; return ;;
+            *)    echo "  Bitte 1-7 eingeben" ;;
         esac
     done
 }
@@ -1756,11 +1761,24 @@ main() {
                 whiptail_tools_menu
                 continue
                 ;;
+            status)
+                show_status
+                if [ $USE_WHIPTAIL -ne 0 ]; then
+                    echo ""
+                    read -p "  Enter drücken um fortzufahren..." -r < /dev/tty
+                fi
+                continue
+                ;;
         esac
     done
 
     if [ "$MODE" = "patches" ]; then
         do_patches_mode
+        exit 0
+    fi
+
+    if [ "$MODE" = "status" ]; then
+        show_status
         exit 0
     fi
 
@@ -1783,9 +1801,13 @@ main() {
     sudo DEBIAN_FRONTEND=noninteractive apt install -y \
         swig build-essential python3-dev python3-pip python3-venv \
         pkg-config libffi-dev libxml2-dev libxslt1-dev zlib1g-dev \
-        git curl wget usbutils dnsmasq inotify-tools \
+        git curl wget usbutils inotify-tools \
         apache2 libapache2-mod-php php php-gd php-curl php-xml php-json \
         mosquitto mosquitto-clients openssh-server
+
+    if is_arm_arch && is_raspberry_pi; then
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsmasq 2>/dev/null || true
+    fi
 
     if is_arm_arch && is_raspberry_pi; then
         sudo DEBIAN_FRONTEND=noninteractive apt install -y libgpiod-dev 2>/dev/null || true
