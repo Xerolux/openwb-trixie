@@ -213,6 +213,13 @@ run_as_openwb_user() {
         return 0
     fi
     ensure_openwb_user
+
+    if [ "$(id -u)" = "0" ]; then
+        export OPENWB_RUN_AS_USER=1
+        log "Installer läuft als root - überspringe Benutzerwechsel"
+        return 0
+    fi
+
     if [ "$(id -un)" = "$OPENWB_USER" ]; then
         export OPENWB_RUN_AS_USER=1
         return 0
@@ -235,15 +242,9 @@ run_as_openwb_user() {
     esac
     chmod a+r "$tmp"
     trap 'rm -f "$tmp"' EXIT
-
-    if [ "$(id -u)" = "0" ]; then
-        log "Starte Installer als Benutzer '$OPENWB_USER' (von root)..."
-        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
-    else
-        ensure_openwb_password_for_sudo
-        log "Starte Installer als Benutzer '$OPENWB_USER'..."
-        exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
-    fi
+    ensure_openwb_password_for_sudo
+    log "Starte Installer als Benutzer '$OPENWB_USER'..."
+    exec sudo -H -u "$OPENWB_USER" env OPENWB_RUN_AS_USER=1 MODE="$MODE" bash "$tmp" "$@"
 }
 
 recover_dpkg_if_needed() {
