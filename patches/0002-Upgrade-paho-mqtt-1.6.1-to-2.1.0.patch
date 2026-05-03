@@ -1,7 +1,7 @@
-From a04001a97485880a657cb747d58b9ee3821de60d Mon Sep 17 00:00:00 2001
+From 829472bd0c6b73e55f7aa2cf57f806b2393f1201 Mon Sep 17 00:00:00 2001
 From: Basti <89860334+Xerolux@users.noreply.github.com>
 Date: Sun, 3 May 2026 13:10:34 +0200
-Subject: [PATCH] Upgrade paho-mqtt 1.6.1 to 2.1.0
+Subject: [PATCH 2/3] Upgrade paho-mqtt 1.6.1 to 2.1.0
 
 Migrate from paho-mqtt 1.6.1 to paho-mqtt >=2.1.0.
 In paho-mqtt 2.0+, mqtt.Client() requires CallbackAPIVersion
@@ -16,15 +16,15 @@ Changes:
 Tested on Debian Trixie (Python 3.13.5) with openWB2 service running.
 Requires-Python: >=3.7 (compatible with Python 3.9+)
 ---
- packages/helpermodules/broker.py        | 4 ++--
- packages/modules/smarthome/mqtt/off.py  | 2 +-
- packages/modules/smarthome/mqtt/on.py   | 2 +-
- packages/modules/smarthome/mqtt/watt.py | 2 +-
- packages/smarthome/smartcommon.py       | 6 +++---
- requirements.txt                        | 2 +-
- runs/remoteSupport/remoteSupport.py     | 2 +-
- simpleAPI/simpleAPI_mqtt.py             | 2 +-
- 8 files changed, 11 insertions(+), 11 deletions(-)
+ packages/helpermodules/broker.py        |  4 +-
+ packages/modules/smarthome/mqtt/off.py  |  2 +-
+ packages/modules/smarthome/mqtt/on.py   |  2 +-
+ packages/modules/smarthome/mqtt/watt.py |  2 +-
+ packages/smarthome/smartcommon.py       |  6 +--
+ requirements.txt                        | 50 ++++++++++++-------------
+ runs/remoteSupport/remoteSupport.py     |  2 +-
+ simpleAPI/simpleAPI_mqtt.py             |  2 +-
+ 8 files changed, 35 insertions(+), 35 deletions(-)
 
 diff --git a/packages/helpermodules/broker.py b/packages/helpermodules/broker.py
 index c9b6940c6..d41cf4560 100644
@@ -119,18 +119,62 @@ index 7b6d958a4..397e99ac4 100644
      client.on_message = on_message
      startTime = time.time()
 diff --git a/requirements.txt b/requirements.txt
-index d3f116305..be4d96d78 100644
+index 8ce7c3b31..fbe5786d3 100644
 --- a/requirements.txt
 +++ b/requirements.txt
-@@ -1,7 +1,7 @@
+@@ -1,27 +1,27 @@
  # don't update python distribution packages in here
- typing-extensions==4.13.2
- jq==1.1.3
+-typing-extensions==4.13.2
+-jq==1.1.3
 -paho_mqtt==1.6.1
++typing-extensions>=4.15.0
++jq>=1.11.0
 +paho-mqtt>=2.1.0
- pymodbus==2.5.2
- pytest==6.2.5
- requests_mock==1.9.3
+ pymodbus>=3.13.0
+-pytest==6.2.5
+-requests_mock==1.9.3
+-lxml==4.9.1
+-aiohttp==3.13.4
+-schedule==1.1.0
+-PyJWT==2.12.0
+-bs4==0.0.1
+-pkce==1.0.3
+-evdev==1.5.0
+-cryptography==46.0.6
+-msal==1.33.0
+-python-dateutil==2.8.2
+-umodbus==1.0.4
+-pysmb==1.2.9.1
+-pytz==2023.3.post1
+-grpcio==1.60.1
+-protobuf==5.29.6
+-ocpp==1.0.0
+-websockets==12.0
+-pycarwings3==0.7.14
+-asyncio==3.4.3
+-passlib==1.7.4
++pytest>=9.0.3
++requests-mock>=1.12.1
++lxml>=6.1.0
++aiohttp>=3.13.5
++schedule>=1.2.2
++PyJWT>=2.12.1
++bs4>=0.0.2
++pkce>=1.0.3
++evdev>=1.9.3
++cryptography>=47.0.0
++msal>=1.36.0
++python-dateutil>=2.9.0
++umodbus>=1.0.4
++pysmb>=1.2.13
++pytz>=2026.1
++grpcio>=1.80.0
++protobuf>=7.34.1
++ocpp>=2.1.0
++websockets>=16.0
++pycarwings3>=0.7.14
++asyncio>=4.0.0
++passlib>=1.7.4
 diff --git a/runs/remoteSupport/remoteSupport.py b/runs/remoteSupport/remoteSupport.py
 index f20ab349b..65f03ea2b 100755
 --- a/runs/remoteSupport/remoteSupport.py

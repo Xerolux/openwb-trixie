@@ -1,7 +1,204 @@
+From 46145edb28cb532dc587f733c2f379b7c7c352a8 Mon Sep 17 00:00:00 2001
+From: Basti <89860334+Xerolux@users.noreply.github.com>
+Date: Sun, 3 May 2026 12:59:00 +0200
+Subject: [PATCH 1/3] Upgrade pymodbus 2.5.2 to 3.x
+
+Migrate from pymodbus 2.5.2 to pymodbus >=3.13.0 to support
+Python 3.12+ (pymodbus 2.x is incompatible).
+
+Changes:
+- requirements.txt: pymodbus==2.5.2 -> pymodbus>=3.13.0
+- New: packages/modules/common/pymodbus_compat.py
+  Provides Endian, BinaryPayloadBuilder, BinaryPayloadDecoder
+  (removed from pymodbus 3.x)
+- Import updates:
+  pymodbus.client.sync -> pymodbus.client
+  pymodbus.transaction -> pymodbus.framer (FramerType enum)
+  pymodbus.constants.Endian -> local compat module
+  pymodbus.payload.* -> local compat module
+- API changes:
+  unit= -> device_id= (keyword-only in 3.x)
+  ModbusSocketFramer/ModbusRtuFramer -> FramerType.SOCKET/RTU
+  ModbusSerialClient(method='rtu',port=X) -> ModbusSerialClient(port=X,framer=FramerType.RTU)
+  ModbusTcpClient(host,port,framer) -> ModbusTcpClient(host,port=port,framer=framer)
+  read_holding_registers(addr,count,...) -> read_holding_registers(addr,count=count,...)
+  response.getRegister(i) -> response.registers[i]
+- Updated test mocks in conftest.py for new module paths
+
+Tested on Debian Trixie (Python 3.13.5) with openWB2 service running.
+---
+ .../sample_modbus/sample_modbus/bat.py        |   6 +-
+ .../sample_modbus/sample_modbus/counter.py    |   4 +-
+ .../sample_modbus/sample_modbus/inverter.py   |   4 +-
+ packages/modbus_control_tester.py             |  18 +--
+ .../chargepoint_module.py                     |   8 +-
+ packages/modules/common/b23.py                |  16 +--
+ packages/modules/common/evse.py               |  18 +--
+ packages/modules/common/lovato.py             |  10 +-
+ packages/modules/common/modbus.py             |  25 ++--
+ packages/modules/common/mpm3pm.py             |  18 +--
+ packages/modules/common/pymodbus_compat.py    | 118 ++++++++++++++++++
+ packages/modules/common/sdm.py                |  36 +++---
+ packages/modules/conftest.py                  |  12 +-
+ .../modules/devices/algodue/algodue/bat.py    |   4 +-
+ .../devices/algodue/algodue/counter.py        |  16 +--
+ .../devices/algodue/algodue/inverter.py       |   4 +-
+ .../devices/alpha_ess/alpha_ess/bat.py        |  16 +--
+ .../devices/alpha_ess/alpha_ess/counter.py    |  14 +--
+ .../devices/alpha_ess/alpha_ess/inverter.py   |   2 +-
+ packages/modules/devices/ampere/ampere/bat.py |   4 +-
+ .../modules/devices/ampere/ampere/counter.py  |   4 +-
+ .../modules/devices/ampere/ampere/inverter.py |   4 +-
+ .../devices/azzurro_zcs/azzurro_zcs/bat.py    |   8 +-
+ .../azzurro_zcs/azzurro_zcs/counter.py        |  10 +-
+ .../azzurro_zcs/azzurro_zcs/inverter.py       |  12 +-
+ .../azzurro_zcs/azzurro_zcs_3p/pv_inverter.py |  10 +-
+ .../carlo_gavazzi/carlo_gavazzi/counter.py    |  10 +-
+ .../modules/devices/chint/chint/counter.py    |  20 +--
+ packages/modules/devices/deye/deye/bat.py     |  14 +--
+ packages/modules/devices/deye/deye/counter.py |  16 +--
+ .../modules/devices/deye/deye/inverter.py     |   6 +-
+ packages/modules/devices/e3dc/e3dc/bat.py     |   4 +-
+ packages/modules/devices/e3dc/e3dc/counter.py |   2 +-
+ .../devices/e3dc/e3dc/external_inverter.py    |   2 +-
+ .../modules/devices/e3dc/e3dc/inverter.py     |   2 +-
+ .../modules/devices/fox_ess/fox_ess/bat.py    |   8 +-
+ .../devices/fox_ess/fox_ess/counter.py        |   8 +-
+ .../devices/fox_ess/fox_ess/inverter.py       |   4 +-
+ .../modules/devices/good_we/good_we/bat.py    |  30 ++---
+ .../devices/good_we/good_we/counter.py        |  16 +--
+ .../devices/good_we/good_we/inverter.py       |   4 +-
+ .../modules/devices/growatt/growatt/bat.py    |  20 +--
+ .../devices/growatt/growatt/counter.py        |  28 ++---
+ .../devices/growatt/growatt/inverter.py       |   8 +-
+ packages/modules/devices/huawei/huawei/bat.py |   4 +-
+ .../modules/devices/huawei/huawei/counter.py  |   4 +-
+ .../modules/devices/huawei/huawei/inverter.py |   2 +-
+ .../modules/devices/huawei/huawei_emma/bat.py |   4 +-
+ .../devices/huawei/huawei_emma/counter.py     |   4 +-
+ .../devices/huawei/huawei_emma/inverter.py    |   4 +-
+ .../devices/huawei/huawei_smartlogger/bat.py  |   4 +-
+ .../huawei/huawei_smartlogger/counter.py      |   8 +-
+ .../huawei/huawei_smartlogger/inverter.py     |   4 +-
+ packages/modules/devices/idm/idm/counter.py   |   4 +-
+ .../modules/devices/janitza/janitza/bat.py    |   2 +-
+ .../devices/janitza/janitza/counter.py        |  12 +-
+ .../devices/janitza/janitza/inverter.py       |   2 +-
+ .../modules/devices/kaco/kaco_tx/scale.py     |   2 +-
+ .../devices/kostal/kostal_piko_ci/counter.py  |   6 +-
+ .../devices/kostal/kostal_piko_ci/inverter.py |   6 +-
+ .../devices/kostal/kostal_plenticore/bat.py   |  14 +--
+ .../kostal/kostal_plenticore/counter.py       |  14 +--
+ .../kostal/kostal_plenticore/device.py        |   4 +-
+ .../kostal/kostal_plenticore/inverter.py      |   8 +-
+ .../devices/kostal/kostal_sem/counter.py      |  14 +--
+ .../modules/devices/marstek/venus_c_e/bat.py  |   4 +-
+ packages/modules/devices/mtec/mtec/bat.py     |   8 +-
+ packages/modules/devices/mtec/mtec/counter.py |   4 +-
+ .../modules/devices/mtec/mtec/inverter.py     |   2 +-
+ packages/modules/devices/nibe/nibe/counter.py |   4 +-
+ packages/modules/devices/orno/orno/counter.py |   4 +-
+ packages/modules/devices/orno/orno/device.py  |   4 +-
+ .../devices/powerdog/powerdog/counter.py      |   6 +-
+ .../devices/powerdog/powerdog/inverter.py     |   2 +-
+ packages/modules/devices/qcells/qcells/bat.py |   8 +-
+ .../modules/devices/qcells/qcells/counter.py  |  16 +--
+ .../modules/devices/qcells/qcells/inverter.py |  12 +-
+ .../modules/devices/saxpower/saxpower/bat.py  |   2 +-
+ .../devices/saxpower/saxpower/counter.py      |   2 +-
+ .../modules/devices/siemens/siemens/bat.py    |   4 +-
+ .../devices/siemens/siemens/counter.py        |   2 +-
+ .../devices/siemens/siemens/inverter.py       |   2 +-
+ .../devices/siemens/siemens_sentron/bat.py    |   6 +-
+ .../siemens/siemens_sentron/counter.py        |  16 +--
+ .../siemens/siemens_sentron/inverter.py       |   4 +-
+ .../devices/sigenergy/sigenergy/bat.py        |   8 +-
+ .../devices/sigenergy/sigenergy/counter.py    |   4 +-
+ .../devices/sigenergy/sigenergy/inverter.py   |   2 +-
+ .../modules/devices/sma/sma_sunny_boy/bat.py  |  10 +-
+ .../sma/sma_sunny_boy/bat_smart_energy.py     |   4 +-
+ .../devices/sma/sma_sunny_boy/bat_tesvolt.py  |   4 +-
+ .../devices/sma/sma_sunny_boy/counter.py      |   4 +-
+ .../devices/sma/sma_sunny_boy/inverter.py     |  26 ++--
+ .../devices/sma/sma_sunny_island/bat.py       |   6 +-
+ packages/modules/devices/sofar/sofar/bat.py   |  10 +-
+ .../modules/devices/sofar/sofar/counter.py    |  14 +--
+ .../modules/devices/sofar/sofar/inverter.py   |   4 +-
+ .../devices/solakon/solakon_one/bat.py        |   8 +-
+ .../devices/solakon/solakon_one/inverter.py   |   4 +-
+ .../devices/solaredge/solaredge/bat.py        |  10 +-
+ .../devices/solaredge/solaredge/counter.py    |   2 +-
+ .../solaredge/solaredge/external_inverter.py  |   2 +-
+ .../devices/solaredge/solaredge/inverter.py   |   2 +-
+ .../devices/solaredge/solaredge/meter.py      |   6 +-
+ .../modules/devices/solarmax/solarmax/bat.py  |  20 +--
+ .../solarmax/solarmax/counter_maxstorage.py   |   4 +-
+ .../devices/solarmax/solarmax/inverter.py     |   2 +-
+ .../solarmax/solarmax/inverter_maxstorage.py  |   4 +-
+ packages/modules/devices/solax/solax/bat.py   |   4 +-
+ .../modules/devices/solax/solax/counter.py    |  24 ++--
+ .../modules/devices/solax/solax/inverter.py   |  14 +--
+ packages/modules/devices/solis/solis/bat.py   |   8 +-
+ .../modules/devices/solis/solis/counter.py    |  10 +-
+ .../modules/devices/solis/solis/inverter.py   |   8 +-
+ packages/modules/devices/studer/studer/bat.py |   8 +-
+ .../modules/devices/studer/studer/inverter.py |   4 +-
+ .../devices/sungrow/sungrow_ihm/bat.py        |  24 ++--
+ .../devices/sungrow/sungrow_ihm/counter.py    |   8 +-
+ .../devices/sungrow/sungrow_ihm/inverter.py   |   2 +-
+ .../devices/sungrow/sungrow_micro/inverter.py |   2 +-
+ .../devices/sungrow/sungrow_sg/counter.py     |  10 +-
+ .../devices/sungrow/sungrow_sg/inverter.py    |   6 +-
+ .../modules/devices/sungrow/sungrow_sh/bat.py |  48 +++----
+ .../devices/sungrow/sungrow_sh/counter.py     |  12 +-
+ .../devices/sungrow/sungrow_sh/inverter.py    |   6 +-
+ .../devices/thermia/thermia/counter.py        |  10 +-
+ packages/modules/devices/upower/upower/bat.py |  12 +-
+ .../modules/devices/upower/upower/counter.py  |  16 +--
+ .../modules/devices/upower/upower/inverter.py |   8 +-
+ .../modules/devices/varta/varta/bat_modbus.py |   4 +-
+ .../modules/devices/varta/varta/counter.py    |   2 +-
+ .../modules/devices/varta/varta/inverter.py   |   2 +-
+ .../modules/devices/victron/victron/bat.py    |  30 ++---
+ .../devices/victron/victron/counter.py        |   8 +-
+ .../devices/victron/victron/inverter.py       |   6 +-
+ .../devices/victron/victron_3p75ct/counter.py |  14 +--
+ packages/modules/io_devices/dimm_kit/api.py   |  10 +-
+ packages/modules/smarthome/acthor/watt.py     |   8 +-
+ packages/modules/smarthome/askoheat/watt.py   |   8 +-
+ packages/modules/smarthome/elwa/watt.py       |   8 +-
+ packages/modules/smarthome/idm/watt.py        |  16 +--
+ packages/modules/smarthome/lambda_/off.py     |   4 +-
+ packages/modules/smarthome/lambda_/on.py      |   4 +-
+ packages/modules/smarthome/lambda_/watt.py    |  10 +-
+ packages/modules/smarthome/nibe/watt.py       |   6 +-
+ packages/modules/smarthome/nxdacxx/off.py     |   4 +-
+ packages/modules/smarthome/nxdacxx/on.py      |   4 +-
+ packages/modules/smarthome/nxdacxx/watt.py    |  10 +-
+ packages/modules/smarthome/ratiotherm/watt.py |   6 +-
+ packages/modules/smarthome/stiebel/off.py     |   4 +-
+ packages/modules/smarthome/stiebel/on.py      |   4 +-
+ packages/modules/smarthome/vampair/off.py     |   4 +-
+ packages/modules/smarthome/vampair/on.py      |   4 +-
+ packages/modules/smarthome/vampair/watt.py    |   6 +-
+ packages/modules/smarthome/viessmann/off.py   |   4 +-
+ packages/modules/smarthome/viessmann/on.py    |   4 +-
+ packages/modules/smarthome/we514/watt.py      |  10 +-
+ packages/tools/modbus_finder.py               |  10 +-
+ packages/tools/modbus_tester.py               |   8 +-
+ requirements.txt                              |   2 +-
+ runs/evse_read_modbus.py                      |   2 +-
+ runs/evse_write_modbus.py                     |   2 +-
+ runs/evsewritembusdev.py                      |   6 +-
+ runs/readmodbus.py                            |   6 +-
+ 164 files changed, 803 insertions(+), 682 deletions(-)
+ create mode 100644 packages/modules/common/pymodbus_compat.py
+
 diff --git a/docs/samples/sample_modbus/sample_modbus/bat.py b/docs/samples/sample_modbus/sample_modbus/bat.py
---- a/docs/samples/sample_modbus/sample_modbus/bat.py	2026-05-03 09:42:28.255123716 +0200
-+++ b/docs/samples/sample_modbus/sample_modbus/bat.py	2026-05-03 10:32:47.515698836 +0200
-@@ -53,7 +53,7 @@
+index e13e03bfa..9c52d26f6 100644
+--- a/docs/samples/sample_modbus/sample_modbus/bat.py
++++ b/docs/samples/sample_modbus/sample_modbus/bat.py
+@@ -53,7 +53,7 @@ class SampleBat(AbstractBat):
          # read_input_registers_bulk benötigit als Parameter das Startregister, die Anzahl der Register,
          # Register-Mapping und die Modbus-ID
          resp = self.client.read_input_registers_bulk(
@@ -10,7 +207,7 @@ diff --git a/docs/samples/sample_modbus/sample_modbus/bat.py b/docs/samples/samp
          imported, exported = self.peak_filter.check_values(resp[Register.POWER],
                                                             resp[Register.IMPORTED],
                                                             resp[Register.EXPORTED])
-@@ -66,8 +66,8 @@
+@@ -66,8 +66,8 @@ class SampleBat(AbstractBat):
          self.store.set(bat_state)
  
          # Einzelregister lesen (dauert länger, bei sehr weit >100 auseinanderliegenden Registern sinnvoll)
@@ -21,11 +218,11 @@ diff --git a/docs/samples/sample_modbus/sample_modbus/bat.py b/docs/samples/samp
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/docs/samples/sample_modbus/sample_modbus/counter.py b/docs/samples/sample_modbus/sample_modbus/counter.py
---- a/docs/samples/sample_modbus/sample_modbus/counter.py	2026-05-03 09:42:28.255123716 +0200
-+++ b/docs/samples/sample_modbus/sample_modbus/counter.py	2026-05-03 10:32:47.515698836 +0200
-@@ -57,7 +57,7 @@
+index 8bf7d3b8b..2e8f45de3 100644
+--- a/docs/samples/sample_modbus/sample_modbus/counter.py
++++ b/docs/samples/sample_modbus/sample_modbus/counter.py
+@@ -57,7 +57,7 @@ class SampleCounter(AbstractCounter):
          # read_input_registers_bulk benötigit als Parameter das Startregister, die Anzahl der Register,
          # Register-Mapping und die Modbus-ID
          resp = self.client.read_input_registers_bulk(
@@ -34,7 +231,7 @@ diff --git a/docs/samples/sample_modbus/sample_modbus/counter.py b/docs/samples/
          imported, exported = self.peak_filter.check_values(sum(resp[Register.POWER_L1]),
                                                             resp[Register.IMPORTED],
                                                             resp[Register.EXPORTED])
-@@ -74,7 +74,7 @@
+@@ -74,7 +74,7 @@ class SampleCounter(AbstractCounter):
          self.store.set(counter_state)
  
          # Einzelregister lesen (dauert länger, bei sehr weit >100 auseinanderliegenden Registern sinnvoll)
@@ -43,11 +240,11 @@ diff --git a/docs/samples/sample_modbus/sample_modbus/counter.py b/docs/samples/
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/docs/samples/sample_modbus/sample_modbus/inverter.py b/docs/samples/sample_modbus/sample_modbus/inverter.py
---- a/docs/samples/sample_modbus/sample_modbus/inverter.py	2026-05-03 09:42:28.255123716 +0200
-+++ b/docs/samples/sample_modbus/sample_modbus/inverter.py	2026-05-03 10:32:47.515698836 +0200
-@@ -51,7 +51,7 @@
+index a46530a18..cde8eee54 100644
+--- a/docs/samples/sample_modbus/sample_modbus/inverter.py
++++ b/docs/samples/sample_modbus/sample_modbus/inverter.py
+@@ -51,7 +51,7 @@ class SampleInverter(AbstractInverter):
          # read_input_registers_bulk benötigit als Parameter das Startregister, die Anzahl der Register,
          # Register-Mapping und die Modbus-ID
          resp = self.client.read_input_registers_bulk(
@@ -56,7 +253,7 @@ diff --git a/docs/samples/sample_modbus/sample_modbus/inverter.py b/docs/samples
          _, exported = self.peak_filter.check_values(resp[Register.POWER], None, resp[Register.EXPORTED])
          inverter_state = InverterState(
              power=resp[Register.POWER],
-@@ -62,7 +62,7 @@
+@@ -62,7 +62,7 @@ class SampleInverter(AbstractInverter):
          self.store.set(inverter_state)
  
          # Einzelregister lesen (dauert länger, bei sehr weit >100 auseinanderliegenden Registern sinnvoll)
@@ -65,11 +262,11 @@ diff --git a/docs/samples/sample_modbus/sample_modbus/inverter.py b/docs/samples
          self.peak_filter.check_values(power)
          exported = self.sim_counter.sim_count(power)[1]
  
-
 diff --git a/packages/modbus_control_tester.py b/packages/modbus_control_tester.py
---- a/packages/modbus_control_tester.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modbus_control_tester.py	2026-05-03 10:32:47.511698758 +0200
-@@ -4,7 +4,7 @@
+index f11ccbba5..9588005d2 100755
+--- a/packages/modbus_control_tester.py
++++ b/packages/modbus_control_tester.py
+@@ -4,7 +4,7 @@ from enum import Enum
  import logging
  import struct
  from typing import Optional
@@ -78,7 +275,7 @@ diff --git a/packages/modbus_control_tester.py b/packages/modbus_control_tester.
  import time
  from modules.common import modbus
  from modules.common.modbus import ModbusDataType
-@@ -54,7 +54,7 @@
+@@ -54,7 +54,7 @@ REGISTERS = (
  
  
  def heartbeat_read():
@@ -87,7 +284,7 @@ diff --git a/packages/modbus_control_tester.py b/packages/modbus_control_tester.
  
  
  def read_reg(register: int,
-@@ -66,28 +66,28 @@
+@@ -66,28 +66,28 @@ def read_reg(register: int,
          if action == Actions.READ_NUMBER:
              if read_mode == ReadMode.READ_INPUT_REG:
                  if length > 1:
@@ -123,11 +320,11 @@ diff --git a/packages/modbus_control_tester.py b/packages/modbus_control_tester.
              return None
      except Exception:
          log.exception("Fehler")
-
 diff --git a/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_module.py b/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_module.py
---- a/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_module.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_module.py	2026-05-03 10:32:47.483698218 +0200
-@@ -148,16 +148,16 @@
+index 3a6b63979..1272fb866 100644
+--- a/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_module.py
++++ b/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_module.py
+@@ -148,16 +148,16 @@ class ChargepointModule(AbstractChargepoint):
                              time.sleep(5)
                              if phases_to_use == 1:
                                  self._client.client.delegate.write_register(
@@ -148,11 +345,11 @@ diff --git a/packages/modules/chargepoints/openwb_series2_satellit/chargepoint_m
                      except AttributeError:
                          self._create_client()
                          self._validate_version()
-
 diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
---- a/packages/modules/common/b23.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/common/b23.py	2026-05-03 10:32:47.487698295 +0200
-@@ -46,7 +46,7 @@
+index affebbd9d..b123c52e2 100644
+--- a/packages/modules/common/b23.py
++++ b/packages/modules/common/b23.py
+@@ -46,7 +46,7 @@ class B23(AbstractCounter):
          # Modbus mapping version: 0x8910, 1 Register, only 2 bytes
          data_type = ModbusDataType.UINT_32
          time.sleep(0.1)
@@ -161,7 +358,7 @@ diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
          return str(self.check_nan(value, value, data_type))
  
      def get_currents(self) -> List[float]:
-@@ -55,14 +55,14 @@
+@@ -55,14 +55,14 @@ class B23(AbstractCounter):
          data_type = ModbusDataType.UINT_32
          time.sleep(0.1)
          return [self.check_nan(val, val / 100, data_type)
@@ -178,7 +375,7 @@ diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
          return self.check_nan(raw_value, raw_value / 100, data_type)
  
      def get_imported(self) -> float:
-@@ -70,12 +70,12 @@
+@@ -70,12 +70,12 @@ class B23(AbstractCounter):
          """
          data_type = ModbusDataType.UINT_64
          time.sleep(0.1)
@@ -193,7 +390,7 @@ diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
  
      def get_power(self) -> Tuple[List[float], float]:
          """Returns power per phase and total power.
-@@ -84,7 +84,7 @@
+@@ -84,7 +84,7 @@ class B23(AbstractCounter):
          time.sleep(0.1)
          # reading of total power and power per phase in one call
          powers = [self.check_nan(val, val / 100, data_type)
@@ -202,7 +399,7 @@ diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
          return powers[1:4], powers[0]
  
      def get_power_factors(self) -> List[float]:
-@@ -95,7 +95,7 @@
+@@ -95,7 +95,7 @@ class B23(AbstractCounter):
          data_type = ModbusDataType.INT_16
          time.sleep(0.1)
          return [self.check_nan(val, val / 1000, data_type)
@@ -211,7 +408,7 @@ diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
  
      def get_voltages(self) -> List[float]:
          """Returns voltages for all 3 phases.
-@@ -103,7 +103,7 @@
+@@ -103,7 +103,7 @@ class B23(AbstractCounter):
          data_type = ModbusDataType.UINT_32
          time.sleep(0.1)
          values = [self.check_nan(val, val / 10, data_type)
@@ -220,11 +417,11 @@ diff --git a/packages/modules/common/b23.py b/packages/modules/common/b23.py
          return values
  
      def get_counter_state(self) -> CounterState:
-
 diff --git a/packages/modules/common/evse.py b/packages/modules/common/evse.py
---- a/packages/modules/common/evse.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/common/evse.py	2026-05-03 10:32:47.487698295 +0200
-@@ -35,9 +35,9 @@
+index dba788746..d8642f05a 100644
+--- a/packages/modules/common/evse.py
++++ b/packages/modules/common/evse.py
+@@ -35,9 +35,9 @@ class Evse:
          self.id = modbus_id
          with client:
              time.sleep(0.1)
@@ -236,7 +433,7 @@ diff --git a/packages/modules/common/evse.py b/packages/modules/common/evse.py
              with ModifyLoglevelContext(log, logging.DEBUG):
                  log.debug(f"Firmware-Version der EVSE: {self.version}")
              if self.version < 17:
-@@ -50,7 +50,7 @@
+@@ -50,7 +50,7 @@ class Evse:
      def get_plug_charge_state(self) -> Tuple[bool, bool, float]:
          time.sleep(0.1)
          raw_set_current, _, state_number = self.client.read_holding_registers(
@@ -245,7 +442,7 @@ diff --git a/packages/modules/common/evse.py b/packages/modules/common/evse.py
          # remove leading zeros
          self.evse_current = int(raw_set_current)
          log.debug("Gesetzte Stromstärke EVSE: "+str(self.evse_current) +
-@@ -78,7 +78,7 @@
+@@ -78,7 +78,7 @@ class Evse:
  
      def is_precise_current_active(self) -> bool:
          time.sleep(0.1)
@@ -254,7 +451,7 @@ diff --git a/packages/modules/common/evse.py b/packages/modules/common/evse.py
          with ModifyLoglevelContext(log, logging.DEBUG):
              if value & self.PRECISE_CURRENT_BIT:
                  log.debug("Angabe der Ströme in 0,01A-Schritten ist aktiviert.")
-@@ -89,23 +89,23 @@
+@@ -89,23 +89,23 @@ class Evse:
  
      def activate_precise_current(self) -> None:
          time.sleep(0.1)
@@ -282,17 +479,17 @@ diff --git a/packages/modules/common/evse.py b/packages/modules/common/evse.py
          else:
              return
  
-@@ -118,4 +118,4 @@
+@@ -118,4 +118,4 @@ class Evse:
                  current = 16
          formatted_current = round(current*100) if self._precise_current else round(current)
          if self.evse_current != formatted_current:
 -            self.client.write_register(1000, formatted_current, unit=self.id)
 +            self.client.write_register(1000, formatted_current, device_id=self.id)
-
 diff --git a/packages/modules/common/lovato.py b/packages/modules/common/lovato.py
---- a/packages/modules/common/lovato.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/common/lovato.py	2026-05-03 10:32:47.487698295 +0200
-@@ -17,21 +17,21 @@
+index cb8a0b596..3c7375cb5 100644
+--- a/packages/modules/common/lovato.py
++++ b/packages/modules/common/lovato.py
+@@ -17,21 +17,21 @@ class Lovato(AbstractCounter):
  
      def get_voltages(self) -> List[float]:
          return [val / 100 for val in self.client.read_input_registers(
@@ -318,7 +515,7 @@ diff --git a/packages/modules/common/lovato.py b/packages/modules/common/lovato.
          if frequency > 100:
              # needed if external measurement clamps connected
              frequency = frequency / 10
-@@ -39,7 +39,7 @@
+@@ -39,7 +39,7 @@ class Lovato(AbstractCounter):
  
      def get_currents(self) -> List[float]:
          return [val / 10000 for val in self.client.read_input_registers(
@@ -327,11 +524,11 @@ diff --git a/packages/modules/common/lovato.py b/packages/modules/common/lovato.
  
      def get_counter_state(self) -> CounterState:
          powers, power = self.get_power()
-
 diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.py
---- a/packages/modules/common/modbus.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/common/modbus.py	2026-05-03 10:35:11.270429754 +0200
-@@ -11,10 +11,10 @@
+index 9f5fc13e5..826b4f54a 100644
+--- a/packages/modules/common/modbus.py
++++ b/packages/modules/common/modbus.py
+@@ -11,10 +11,10 @@ import time
  from typing import Any, Callable, Iterable, Optional, Union, overload, List
  
  import pymodbus
@@ -346,16 +543,17 @@ diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.
  from urllib3.util import parse_url
  
  log = logging.getLogger(__name__)
-@@ -103,7 +103,7 @@
+@@ -102,8 +102,7 @@ class ModbusClient:
+ 
              number_of_addresses = sum(divide_rounding_up(
                  t.bits, _MODBUS_HOLDING_REGISTER_SIZE) for t in types)
-             response = read_register_method(
+-            response = read_register_method(
 -                address, number_of_addresses, **kwargs)
-+                address, count=number_of_addresses, **kwargs)
++            response = read_register_method(`n                address, count=number_of_addresses, **kwargs)
              if response.isError():
                  raise Exception(__name__+" "+str(response))
              decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder, wordorder)
-@@ -176,7 +176,7 @@
+@@ -176,7 +175,7 @@ class ModbusClient:
  
      def read_coils(self, address: int, count: int, **kwargs):
          try:
@@ -364,7 +562,7 @@ diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.
              if response.isError():
                  raise Exception(__name__+" "+str(response))
              return response.bits[0] if count == 1 else response.bits[:count]
-@@ -235,7 +235,7 @@
+@@ -235,7 +234,7 @@ class ModbusClient:
          if self.is_socket_open() is False:
              self.connect()
          try:
@@ -373,7 +571,7 @@ diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.
              if response.isError():
                  raise Exception(__name__+" "+str(response))
              decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder, wordorder)
-@@ -299,13 +299,13 @@
+@@ -299,13 +298,13 @@ class ModbusTcpClient_(ModbusClient):
                   address: str,
                   port: int = 502,
                   sleep_after_connect: Optional[int] = 0,
@@ -389,7 +587,7 @@ diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.
  
  
  class ModbusUdpClient_(ModbusClient):
-@@ -318,7 +318,7 @@
+@@ -318,7 +317,7 @@ class ModbusUdpClient_(ModbusClient):
          host = parsed_url.host
          if parsed_url.port is not None:
              port = parsed_url.port
@@ -398,7 +596,7 @@ diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.
  
  
  class ModbusSerialClient_(ModbusClient):
-@@ -326,8 +326,8 @@
+@@ -326,8 +325,8 @@ class ModbusSerialClient_(ModbusClient):
                   port: int,
                   sleep_after_connect: Optional[int] = 0,
                   **kwargs):
@@ -409,11 +607,11 @@ diff --git a/packages/modules/common/modbus.py b/packages/modules/common/modbus.
                                              baudrate=9600,
                                              stopbits=1,
                                              bytesize=8,
-
 diff --git a/packages/modules/common/mpm3pm.py b/packages/modules/common/mpm3pm.py
---- a/packages/modules/common/mpm3pm.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/common/mpm3pm.py	2026-05-03 10:32:47.491698372 +0200
-@@ -17,40 +17,40 @@
+index 4791398dc..59844a00f 100644
+--- a/packages/modules/common/mpm3pm.py
++++ b/packages/modules/common/mpm3pm.py
+@@ -17,40 +17,40 @@ class Mpm3pm(AbstractCounter):
  
      def get_voltages(self) -> List[float]:
          return [val / 10 for val in self.client.read_input_registers(
@@ -463,10 +661,11 @@ diff --git a/packages/modules/common/mpm3pm.py b/packages/modules/common/mpm3pm.
  
      def get_counter_state(self) -> CounterState:
          powers, power = self.get_power()
-
 diff --git a/packages/modules/common/pymodbus_compat.py b/packages/modules/common/pymodbus_compat.py
---- a/packages/modules/common/pymodbus_compat.py	1970-01-01 01:00:00.000000000 +0100
-+++ b/packages/modules/common/pymodbus_compat.py	2026-05-03 10:32:47.487698295 +0200
+new file mode 100644
+index 000000000..910fef810
+--- /dev/null
++++ b/packages/modules/common/pymodbus_compat.py
 @@ -0,0 +1,118 @@
 +import struct
 +
@@ -586,11 +785,11 @@ diff --git a/packages/modules/common/pymodbus_compat.py b/packages/modules/commo
 +
 +    def to_registers(self):
 +        return list(self._regs)
-
 diff --git a/packages/modules/common/sdm.py b/packages/modules/common/sdm.py
---- a/packages/modules/common/sdm.py	2026-05-03 09:42:28.267124032 +0200
-+++ b/packages/modules/common/sdm.py	2026-05-03 10:32:47.487698295 +0200
-@@ -20,12 +20,12 @@
+index 6fe1cd62e..0d6d53d32 100644
+--- a/packages/modules/common/sdm.py
++++ b/packages/modules/common/sdm.py
+@@ -20,12 +20,12 @@ class Sdm(AbstractCounter):
          self.id = modbus_id
          self.fast_mode = True
          with client:
@@ -605,7 +804,7 @@ diff --git a/packages/modules/common/sdm.py b/packages/modules/common/sdm.py
  
  
  class SdmRegister(IntEnum):
-@@ -57,14 +57,14 @@
+@@ -57,14 +57,14 @@ class Sdm630_72(Sdm):
      def get_power(self) -> Tuple[List[float], float]:
          # smarthome legacy
          time.sleep(0.1)
@@ -622,7 +821,7 @@ diff --git a/packages/modules/common/sdm.py b/packages/modules/common/sdm.py
  
      def get_counter_state(self) -> CounterState:
          # entgegen der Doku können nicht bei allen SDM72 80 Register auf einmal gelesen werden,
-@@ -73,18 +73,18 @@
+@@ -73,18 +73,18 @@ class Sdm630_72(Sdm):
              try:
                  time.sleep(0.1)
                  bulk_1 = self.client.read_input_registers_bulk(
@@ -645,7 +844,7 @@ diff --git a/packages/modules/common/sdm.py b/packages/modules/common/sdm.py
                  self.fast_mode = False
          if self.fast_mode is False:
              # im gleichen Durchlauf noch im slow mode versuchen, sonst schlägt der Hardware-Check fehl
-@@ -92,23 +92,23 @@
+@@ -92,23 +92,23 @@ class Sdm630_72(Sdm):
              resp = {}
              time.sleep(0.1)
              resp[SdmRegister.VOLTAGE_L1] = self.client.read_input_registers(
@@ -675,7 +874,7 @@ diff --git a/packages/modules/common/sdm.py b/packages/modules/common/sdm.py
  
          frequency = resp[SdmRegister.FREQUENCY]
          if frequency > 100:
-@@ -147,19 +147,19 @@
+@@ -147,19 +147,19 @@ class Sdm120(Sdm):
      def get_power(self) -> Tuple[List[float], float]:
          # smarthome legacy
          time.sleep(0.1)
@@ -699,11 +898,11 @@ diff --git a/packages/modules/common/sdm.py b/packages/modules/common/sdm.py
          resp = {**bulk_1, **bulk_2}
          frequency = resp[SdmRegister.FREQUENCY]
          if frequency > 100:
-
 diff --git a/packages/modules/conftest.py b/packages/modules/conftest.py
---- a/packages/modules/conftest.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/conftest.py	2026-05-03 10:35:57.967299295 +0200
-@@ -20,11 +20,17 @@
+index 9733696c8..e88978c89 100644
+--- a/packages/modules/conftest.py
++++ b/packages/modules/conftest.py
+@@ -20,11 +20,17 @@ sys.modules['pycarwings3'] = type(sys)('pycarwings3')
  
  # sys.modules['telnetlib3'] = type(sys)('telnetlib3')
  
@@ -723,7 +922,7 @@ diff --git a/packages/modules/conftest.py b/packages/modules/conftest.py
  
  module = type(sys)('pymodbus.constants')
  module.Endian = Mock()
-@@ -35,8 +41,6 @@
+@@ -35,8 +41,6 @@ module.BinaryPayloadDecoder = Mock()
  sys.modules['pymodbus.payload'] = module
  
  module = type(sys)('pymodbus.transaction')
@@ -732,11 +931,11 @@ diff --git a/packages/modules/conftest.py b/packages/modules/conftest.py
  sys.modules['pymodbus.transaction'] = module
  
  module = type(sys)('socketserver')
-
 diff --git a/packages/modules/devices/algodue/algodue/bat.py b/packages/modules/devices/algodue/algodue/bat.py
---- a/packages/modules/devices/algodue/algodue/bat.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/algodue/algodue/bat.py	2026-05-03 10:32:47.447697522 +0200
-@@ -36,8 +36,8 @@
+index 5ceee007e..70c1478aa 100644
+--- a/packages/modules/devices/algodue/algodue/bat.py
++++ b/packages/modules/devices/algodue/algodue/bat.py
+@@ -36,8 +36,8 @@ class AlgodueBat(AbstractBat):
  
      def update(self):
          currents = self.__tcp_client.read_input_registers(
@@ -747,11 +946,11 @@ diff --git a/packages/modules/devices/algodue/algodue/bat.py b/packages/modules/
          power = sum(powers)
  
          self.peak_filter.check_values(power)
-
 diff --git a/packages/modules/devices/algodue/algodue/counter.py b/packages/modules/devices/algodue/algodue/counter.py
---- a/packages/modules/devices/algodue/algodue/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/algodue/algodue/counter.py	2026-05-03 10:32:47.447697522 +0200
-@@ -35,15 +35,15 @@
+index 805410400..7d46d7bba 100644
+--- a/packages/modules/devices/algodue/algodue/counter.py
++++ b/packages/modules/devices/algodue/algodue/counter.py
+@@ -35,15 +35,15 @@ class AlgodueCounter(AbstractCounter):
          self.peak_filter = PeakFilter(ComponentType.COUNTER, self.component_config.id, self.fault_state)
  
      def update(self):
@@ -772,7 +971,7 @@ diff --git a/packages/modules/devices/algodue/algodue/counter.py b/packages/modu
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-@@ -63,8 +63,8 @@
+@@ -63,8 +63,8 @@ class AlgodueCounter(AbstractCounter):
  
  component_descriptor = ComponentDescriptor(configuration_factory=AlgodueCounterSetup)
  
@@ -783,7 +982,7 @@ diff --git a/packages/modules/devices/algodue/algodue/counter.py b/packages/modu
  # model_string = "unknown"
  # if model_id == 0x03:
  #     model_string = "6 A, 3 phases, 4 wires"
-@@ -77,7 +77,7 @@
+@@ -77,7 +77,7 @@ component_descriptor = ComponentDescriptor(configuration_factory=AlgodueCounterS
  # elif model_id == 0x12:
  #     model_string = "63 A, 3 phases, 4 wires"
  
@@ -792,11 +991,11 @@ diff --git a/packages/modules/devices/algodue/algodue/counter.py b/packages/modu
  # type_string = "unknown"
  # if type_id == 0x00:
  #     type_string = "NO MID, RESET"
-
 diff --git a/packages/modules/devices/algodue/algodue/inverter.py b/packages/modules/devices/algodue/algodue/inverter.py
---- a/packages/modules/devices/algodue/algodue/inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/algodue/algodue/inverter.py	2026-05-03 10:32:47.447697522 +0200
-@@ -36,8 +36,8 @@
+index b8cd03682..2d30d731d 100644
+--- a/packages/modules/devices/algodue/algodue/inverter.py
++++ b/packages/modules/devices/algodue/algodue/inverter.py
+@@ -36,8 +36,8 @@ class AlgodueInverter(AbstractInverter):
  
      def update(self):
          currents = self.__tcp_client.read_input_registers(
@@ -807,11 +1006,11 @@ diff --git a/packages/modules/devices/algodue/algodue/inverter.py b/packages/mod
          power = sum(powers)
  
          self.peak_filter.check_values(power)
-
 diff --git a/packages/modules/devices/alpha_ess/alpha_ess/bat.py b/packages/modules/devices/alpha_ess/alpha_ess/bat.py
---- a/packages/modules/devices/alpha_ess/alpha_ess/bat.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/alpha_ess/alpha_ess/bat.py	2026-05-03 10:32:47.463697831 +0200
-@@ -39,9 +39,9 @@
+index 8663913cc..c72c0228b 100644
+--- a/packages/modules/devices/alpha_ess/alpha_ess/bat.py
++++ b/packages/modules/devices/alpha_ess/alpha_ess/bat.py
+@@ -39,9 +39,9 @@ class AlphaEssBat(AbstractBat):
          # keine Unterschiede zwischen den Versionen
  
          time.sleep(0.1)
@@ -823,7 +1022,7 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/bat.py b/packages/modu
  
          power = voltage * current * -1 / 100
          log.debug(
-@@ -49,7 +49,7 @@
+@@ -49,7 +49,7 @@ class AlphaEssBat(AbstractBat):
              (power, voltage, current)
          )
          time.sleep(0.1)
@@ -832,7 +1031,7 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/bat.py b/packages/modu
          soc = int(soc_reg * 0.1)
  
          self.peak_filter.check_values(power)
-@@ -69,7 +69,7 @@
+@@ -69,7 +69,7 @@ class AlphaEssBat(AbstractBat):
              # Kein Powerlimit gefordert, externe Steuerung deaktivieren
              log.debug("Keine Batteriesteuerung gefordert, deaktiviere externe Steuerung.")
              if self.last_mode is not None:
@@ -841,7 +1040,7 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/bat.py b/packages/modu
                  self.last_mode = None
          elif power_limit <= 0:
              # AlphaESS kann die Entladung nur über den SoC verhindern (komplette Entladesperre)
-@@ -77,15 +77,15 @@
+@@ -77,15 +77,15 @@ class AlphaEssBat(AbstractBat):
              # Zeiten für Netzladung müssen im Wechselrichter aktiviert werden
              log.debug("Aktive Batteriesteuerung angestoßen. Setze Entladesperre.")
              if self.last_mode != 'stop':
@@ -861,11 +1060,11 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/bat.py b/packages/modu
                  self.last_mode = 'charge'
  
      def power_limit_controllable(self) -> bool:
-
 diff --git a/packages/modules/devices/alpha_ess/alpha_ess/counter.py b/packages/modules/devices/alpha_ess/alpha_ess/counter.py
---- a/packages/modules/devices/alpha_ess/alpha_ess/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/alpha_ess/alpha_ess/counter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -37,12 +37,12 @@
+index ea184ee88..11cec1561 100644
+--- a/packages/modules/devices/alpha_ess/alpha_ess/counter.py
++++ b/packages/modules/devices/alpha_ess/alpha_ess/counter.py
+@@ -37,12 +37,12 @@ class AlphaEssCounter(AbstractCounter):
          time.sleep(0.1)
          if self.__device_config.source == 0 and self.__device_config.version == 0:
              power, exported, imported = self.__tcp_client.read_holding_registers(
@@ -880,7 +1079,7 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/counter.py b/packages/
              counter_state = CounterState(
                  currents=currents,
                  imported=imported,
-@@ -50,18 +50,18 @@
+@@ -50,18 +50,18 @@ class AlphaEssCounter(AbstractCounter):
                  power=power
              )
          else:
@@ -904,11 +1103,11 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/counter.py b/packages/
              currents = scale_currents(currents, powers)
              counter_state = CounterState(
                  currents=currents,
-
 diff --git a/packages/modules/devices/alpha_ess/alpha_ess/inverter.py b/packages/modules/devices/alpha_ess/alpha_ess/inverter.py
---- a/packages/modules/devices/alpha_ess/alpha_ess/inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/alpha_ess/alpha_ess/inverter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -56,7 +56,7 @@
+index d38a28bdd..512d23491 100644
+--- a/packages/modules/devices/alpha_ess/alpha_ess/inverter.py
++++ b/packages/modules/devices/alpha_ess/alpha_ess/inverter.py
+@@ -56,7 +56,7 @@ class AlphaEssInverter(AbstractInverter):
  
      def __get_power(self, reg_p: int) -> Number:
          powers = [
@@ -917,11 +1116,11 @@ diff --git a/packages/modules/devices/alpha_ess/alpha_ess/inverter.py b/packages
              for address in [reg_p, 0x041F, 0x0423, 0x0427]
          ]
          powers[0] = abs(powers[0])
-
 diff --git a/packages/modules/devices/ampere/ampere/bat.py b/packages/modules/devices/ampere/ampere/bat.py
---- a/packages/modules/devices/ampere/ampere/bat.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/ampere/ampere/bat.py	2026-05-03 10:32:47.447697522 +0200
-@@ -36,8 +36,8 @@
+index 1ee8a9269..8cf0c878f 100644
+--- a/packages/modules/devices/ampere/ampere/bat.py
++++ b/packages/modules/devices/ampere/ampere/bat.py
+@@ -36,8 +36,8 @@ class AmpereBat(AbstractBat):
          self.client = self.kwargs['client']
  
      def update(self) -> None:
@@ -932,11 +1131,11 @@ diff --git a/packages/modules/devices/ampere/ampere/bat.py b/packages/modules/de
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/ampere/ampere/counter.py b/packages/modules/devices/ampere/ampere/counter.py
---- a/packages/modules/devices/ampere/ampere/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/ampere/ampere/counter.py	2026-05-03 10:32:47.447697522 +0200
-@@ -36,8 +36,8 @@
+index 5ecc06f90..ec377b593 100644
+--- a/packages/modules/devices/ampere/ampere/counter.py
++++ b/packages/modules/devices/ampere/ampere/counter.py
+@@ -36,8 +36,8 @@ class AmpereCounter(AbstractCounter):
          self.peak_filter = PeakFilter(ComponentType.COUNTER, self.component_config.id, self.fault_state)
  
      def update(self):
@@ -947,11 +1146,11 @@ diff --git a/packages/modules/devices/ampere/ampere/counter.py b/packages/module
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/ampere/ampere/inverter.py b/packages/modules/devices/ampere/ampere/inverter.py
---- a/packages/modules/devices/ampere/ampere/inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/ampere/ampere/inverter.py	2026-05-03 10:32:47.447697522 +0200
-@@ -36,8 +36,8 @@
+index 8fcbc47ed..daed69848 100644
+--- a/packages/modules/devices/ampere/ampere/inverter.py
++++ b/packages/modules/devices/ampere/ampere/inverter.py
+@@ -36,8 +36,8 @@ class AmpereInverter(AbstractInverter):
          self.peak_filter = PeakFilter(ComponentType.INVERTER, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -962,11 +1161,11 @@ diff --git a/packages/modules/devices/ampere/ampere/inverter.py b/packages/modul
  
          power = pv1_power + pv2_power
  
-
 diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py b/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py
---- a/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py	2026-05-03 10:32:47.451697600 +0200
-@@ -33,15 +33,15 @@
+index f13cd5b59..d595bd90e 100644
+--- a/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py
++++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py
+@@ -33,15 +33,15 @@ class ZCSBat(AbstractBat):
          # 0x020D Battery charge-discharge power Int16 -10-10 kW accuracy 0,01 kW pos charge, neg discharge
          # 0x020E Battery voltage Cell UInt16 0-100 V accuracy 0,1 V
          # 0x020F Battery charge-discharge current Int -100-100 A accuracy 0,01A
@@ -986,10 +1185,10 @@ diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/bat.py b/packages/
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py b/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py
---- a/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py	2026-05-03 10:32:47.451697600 +0200
+index 25ab9f48e..10e6672d0 100644
+--- a/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py
++++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -998,7 +1197,7 @@ diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py b/packa
  
  from modules.common.abstract_device import AbstractCounter
  from modules.common.component_state import CounterState
-@@ -36,22 +36,22 @@
+@@ -36,22 +36,22 @@ class ZCSCounter(AbstractCounter):
          # 0x0212 Grid Power Int16 -10-10 kW Unit 0,01kW Feed in/out power
          # 0x0214 Input/Output power Int16 -10-10kW 0,01kW Energy storage power inverter
          power = self.client.read_input_registers(0x0212, ModbusDataType.INT_16, wordorder=Endian.Little,
@@ -1025,10 +1224,10 @@ diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/counter.py b/packa
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py b/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py
---- a/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py	2026-05-03 10:32:47.451697600 +0200
+index 2d7b7de42..4c80155db 100644
+--- a/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py
++++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -1037,7 +1236,7 @@ diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py b/pack
  
  from modules.common.abstract_device import AbstractInverter
  from modules.common.component_state import InverterState
-@@ -35,18 +35,18 @@
+@@ -35,18 +35,18 @@ class ZCSInverter(AbstractInverter):
          # 0x0250 PV1 Voltage UInt16 0-1000V Unit 0,1V
          # 0x0251 PV1 current Int16 0-100A Unit 0,01A
          power_string1 = (self.client.read_input_registers(
@@ -1061,11 +1260,11 @@ diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs/inverter.py b/pack
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py b/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py
---- a/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py	2026-05-03 10:32:47.451697600 +0200
-@@ -35,12 +35,12 @@
+index cb792c7dc..d74e7a6c2 100644
+--- a/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py
++++ b/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py
+@@ -35,12 +35,12 @@ class ZCSPvInverter(AbstractInverter):
          power = exported = 0
          currents = None
          try:
@@ -1083,10 +1282,10 @@ diff --git a/packages/modules/devices/azzurro_zcs/azzurro_zcs_3p/pv_inverter.py 
              ]
          except Exception:
              log.debug("Modbus could not be read.")
-
 diff --git a/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py b/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py
---- a/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py	2026-05-03 10:32:47.427697136 +0200
+index 18ff88a5f..fecec9450 100644
+--- a/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py
++++ b/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/env python3
  from typing import Any, TypedDict
@@ -1096,7 +1295,7 @@ diff --git a/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py b/p
  
  from modules.devices.carlo_gavazzi.carlo_gavazzi.config import CarloGavazziCounterSetup
  from modules.common import modbus
-@@ -39,13 +39,13 @@
+@@ -39,13 +39,13 @@ class CarloGavazziCounter(AbstractCounter):
      def update(self):
          with self.__tcp_client:
              voltages = [val / 10 for val in self.__tcp_client.read_input_registers(
@@ -1114,11 +1313,11 @@ diff --git a/packages/modules/devices/carlo_gavazzi/carlo_gavazzi/counter.py b/p
              if frequency > 100:
                  frequency = frequency / 10
  
-
 diff --git a/packages/modules/devices/chint/chint/counter.py b/packages/modules/devices/chint/chint/counter.py
---- a/packages/modules/devices/chint/chint/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/chint/chint/counter.py	2026-05-03 10:32:47.455697677 +0200
-@@ -33,30 +33,30 @@
+index 9654cdfb2..a9708834d 100644
+--- a/packages/modules/devices/chint/chint/counter.py
++++ b/packages/modules/devices/chint/chint/counter.py
+@@ -33,30 +33,30 @@ class CHINTCounter(AbstractCounter):
      def update(self):
          powers = voltages = currents = power_factors = None
          imported_ep = exported_ep = power = frequency = 0
@@ -1159,11 +1358,11 @@ diff --git a/packages/modules/devices/chint/chint/counter.py b/packages/modules/
  
          imported_ep, exported_ep = self.peak_filter.check_values(power, imported_ep, exported_ep)
  
-
 diff --git a/packages/modules/devices/deye/deye/bat.py b/packages/modules/devices/deye/deye/bat.py
---- a/packages/modules/devices/deye/deye/bat.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/deye/deye/bat.py	2026-05-03 10:32:47.427697136 +0200
-@@ -33,18 +33,18 @@
+index f6677ce76..920f33a87 100644
+--- a/packages/modules/devices/deye/deye/bat.py
++++ b/packages/modules/devices/deye/deye/bat.py
+@@ -33,18 +33,18 @@ class DeyeBat(AbstractBat):
          self.peak_filter = PeakFilter(ComponentType.BAT, self.component_config.id, self.fault_state)
          self.sim_counter = SimCounter(self.__device_id, self.component_config.id, prefix="speicher")
          self.device_type = DeviceType(self.client.read_holding_registers(
@@ -1187,7 +1386,7 @@ diff --git a/packages/modules/devices/deye/deye/bat.py b/packages/modules/device
                  imported, exported = self.peak_filter.check_values(power, imported, exported)
  
              elif self.device_type == DeviceType.SINGLE_PHASE_STRING:
-@@ -52,11 +52,11 @@
+@@ -52,11 +52,11 @@ class DeyeBat(AbstractBat):
                  imported, exported = self.sim_counter.sim_count(power)
  
          else:  # THREE_PHASE_LV (0x0500, 0x0005), THREE_PHASE_HV (0x0006)
@@ -1201,11 +1400,11 @@ diff --git a/packages/modules/devices/deye/deye/bat.py b/packages/modules/device
              self.peak_filter.check_values(power)
              imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/deye/deye/counter.py b/packages/modules/devices/deye/deye/counter.py
---- a/packages/modules/devices/deye/deye/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/deye/deye/counter.py	2026-05-03 10:32:47.427697136 +0200
-@@ -32,13 +32,13 @@
+index cc9c002dc..1d2be5ea5 100644
+--- a/packages/modules/devices/deye/deye/counter.py
++++ b/packages/modules/devices/deye/deye/counter.py
+@@ -32,13 +32,13 @@ class DeyeCounter(AbstractCounter):
          self.peak_filter = PeakFilter(ComponentType.COUNTER, self.component_config.id, self.fault_state)
          self.sim_counter = SimCounter(self.__device_id, self.component_config.id, prefix="bezug")
          self.device_type = DeviceType(self.client.read_holding_registers(
@@ -1221,7 +1420,7 @@ diff --git a/packages/modules/devices/deye/deye/counter.py b/packages/modules/de
  
              if self.device_type == DeviceType.SINGLE_PHASE_HYBRID:
                  powers = [0]*3
-@@ -48,18 +48,18 @@
+@@ -48,18 +48,18 @@ class DeyeCounter(AbstractCounter):
  
              elif self.device_type == DeviceType.SINGLE_PHASE_STRING:
                  currents = [
@@ -1246,11 +1445,11 @@ diff --git a/packages/modules/devices/deye/deye/counter.py b/packages/modules/de
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/deye/deye/inverter.py b/packages/modules/devices/deye/deye/inverter.py
---- a/packages/modules/devices/deye/deye/inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/deye/deye/inverter.py	2026-05-03 10:32:47.427697136 +0200
-@@ -32,16 +32,16 @@
+index 13eeb467b..e9dee5b5e 100644
+--- a/packages/modules/devices/deye/deye/inverter.py
++++ b/packages/modules/devices/deye/deye/inverter.py
+@@ -32,16 +32,16 @@ class DeyeInverter(AbstractInverter):
          self.peak_filter = PeakFilter(ComponentType.INVERTER, self.component_config.id, self.fault_state)
          self.sim_counter = SimCounter(self.__device_id, self.component_config.id, prefix="pv")
          self.device_type = DeviceType(self.client.read_holding_registers(
@@ -1270,11 +1469,11 @@ diff --git a/packages/modules/devices/deye/deye/inverter.py b/packages/modules/d
  
              if self.device_type == DeviceType.THREE_PHASE_HV:
                  power = power * 10
-
 diff --git a/packages/modules/devices/e3dc/e3dc/bat.py b/packages/modules/devices/e3dc/e3dc/bat.py
---- a/packages/modules/devices/e3dc/e3dc/bat.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/e3dc/e3dc/bat.py	2026-05-03 10:32:47.443697445 +0200
-@@ -18,9 +18,9 @@
+index 18d290671..86e5497e2 100644
+--- a/packages/modules/devices/e3dc/e3dc/bat.py
++++ b/packages/modules/devices/e3dc/e3dc/bat.py
+@@ -18,9 +18,9 @@ log = logging.getLogger(__name__)
  
  def read_bat(client: modbus.ModbusTcpClient_, modbus_id: int) -> Tuple[int, int]:
      # 40082 SoC
@@ -1286,11 +1485,11 @@ diff --git a/packages/modules/devices/e3dc/e3dc/bat.py b/packages/modules/device
      return soc, power
  
  
-
 diff --git a/packages/modules/devices/e3dc/e3dc/counter.py b/packages/modules/devices/e3dc/e3dc/counter.py
---- a/packages/modules/devices/e3dc/e3dc/counter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/e3dc/e3dc/counter.py	2026-05-03 10:32:47.443697445 +0200
-@@ -29,7 +29,7 @@
+index f58ff196d..4744c301a 100644
+--- a/packages/modules/devices/e3dc/e3dc/counter.py
++++ b/packages/modules/devices/e3dc/e3dc/counter.py
+@@ -29,7 +29,7 @@ def read_counter(client: modbus.ModbusTcpClient_, modbus_id: int) -> Tuple[int,
      # bei den meisten e3dc auf 40128
      # farm haben typ 5, normale e3dc haben nur typ 1 und keinen typ 5
      # bei farm ist typ 1 vorhanden aber liefert immer 0
@@ -1299,11 +1498,11 @@ diff --git a/packages/modules/devices/e3dc/e3dc/counter.py b/packages/modules/de
      log.debug("meters: %s", meters)
      try:
          powers = get_meter_phases(5, meters)
-
 diff --git a/packages/modules/devices/e3dc/e3dc/external_inverter.py b/packages/modules/devices/e3dc/e3dc/external_inverter.py
---- a/packages/modules/devices/e3dc/e3dc/external_inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/e3dc/e3dc/external_inverter.py	2026-05-03 10:32:47.443697445 +0200
-@@ -19,7 +19,7 @@
+index 93c895527..49c1205c4 100644
+--- a/packages/modules/devices/e3dc/e3dc/external_inverter.py
++++ b/packages/modules/devices/e3dc/e3dc/external_inverter.py
+@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
  
  def read_external_inverter(client: modbus.ModbusTcpClient_, modbus_id: int) -> int:
      pv_external = int(client.read_holding_registers(
@@ -1312,11 +1511,11 @@ diff --git a/packages/modules/devices/e3dc/e3dc/external_inverter.py b/packages/
      return pv_external
  
  
-
 diff --git a/packages/modules/devices/e3dc/e3dc/inverter.py b/packages/modules/devices/e3dc/e3dc/inverter.py
---- a/packages/modules/devices/e3dc/e3dc/inverter.py	2026-05-03 09:42:28.271124137 +0200
-+++ b/packages/modules/devices/e3dc/e3dc/inverter.py	2026-05-03 10:32:47.443697445 +0200
-@@ -18,7 +18,7 @@
+index 25249f49c..f88b373a0 100644
+--- a/packages/modules/devices/e3dc/e3dc/inverter.py
++++ b/packages/modules/devices/e3dc/e3dc/inverter.py
+@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
  
  
  def read_inverter(client: modbus.ModbusTcpClient_, modbus_id: int) -> int:
@@ -1325,11 +1524,11 @@ diff --git a/packages/modules/devices/e3dc/e3dc/inverter.py b/packages/modules/d
      return pv
  
  
-
 diff --git a/packages/modules/devices/fox_ess/fox_ess/bat.py b/packages/modules/devices/fox_ess/fox_ess/bat.py
---- a/packages/modules/devices/fox_ess/fox_ess/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/fox_ess/fox_ess/bat.py	2026-05-03 10:32:47.427697136 +0200
-@@ -32,12 +32,12 @@
+index 408fa44e4..9cd186e14 100644
+--- a/packages/modules/devices/fox_ess/fox_ess/bat.py
++++ b/packages/modules/devices/fox_ess/fox_ess/bat.py
+@@ -32,12 +32,12 @@ class FoxEssBat(AbstractBat):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -1346,11 +1545,11 @@ diff --git a/packages/modules/devices/fox_ess/fox_ess/bat.py b/packages/modules/
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/fox_ess/fox_ess/counter.py b/packages/modules/devices/fox_ess/fox_ess/counter.py
---- a/packages/modules/devices/fox_ess/fox_ess/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/fox_ess/fox_ess/counter.py	2026-05-03 10:32:47.427697136 +0200
-@@ -29,11 +29,11 @@
+index e600ce8f1..3c2da2c6a 100644
+--- a/packages/modules/devices/fox_ess/fox_ess/counter.py
++++ b/packages/modules/devices/fox_ess/fox_ess/counter.py
+@@ -29,11 +29,11 @@ class FoxEssCounter(AbstractCounter):
          unit = self.component_config.configuration.modbus_id
  
          powers = [val * -1 for val in
@@ -1366,11 +1565,11 @@ diff --git a/packages/modules/devices/fox_ess/fox_ess/counter.py b/packages/modu
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/fox_ess/fox_ess/inverter.py b/packages/modules/devices/fox_ess/fox_ess/inverter.py
---- a/packages/modules/devices/fox_ess/fox_ess/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/fox_ess/fox_ess/inverter.py	2026-05-03 10:32:47.427697136 +0200
-@@ -31,10 +31,10 @@
+index d64265aed..862b6568f 100644
+--- a/packages/modules/devices/fox_ess/fox_ess/inverter.py
++++ b/packages/modules/devices/fox_ess/fox_ess/inverter.py
+@@ -31,10 +31,10 @@ class FoxEssInverter(AbstractInverter):
          unit = self.component_config.configuration.modbus_id
          # PV1 + PV2 Power
          power = sum([self.client.read_holding_registers(
@@ -1383,11 +1582,11 @@ diff --git a/packages/modules/devices/fox_ess/fox_ess/inverter.py b/packages/mod
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/good_we/good_we/bat.py b/packages/modules/devices/good_we/good_we/bat.py
---- a/packages/modules/devices/good_we/good_we/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/good_we/good_we/bat.py	2026-05-03 10:32:47.435697290 +0200
-@@ -49,19 +49,19 @@
+index de3100230..19ec9b7da 100644
+--- a/packages/modules/devices/good_we/good_we/bat.py
++++ b/packages/modules/devices/good_we/good_we/bat.py
+@@ -49,19 +49,19 @@ class GoodWeBat(AbstractBat):
              if battery_index == 1:
                  if self.version == GoodWeVersion.V_1_7:
                      power = self.__tcp_client.read_holding_registers(
@@ -1414,7 +1613,7 @@ diff --git a/packages/modules/devices/good_we/good_we/bat.py b/packages/modules/
                  self.peak_filter.check_values(power)
                  imported, exported = self.sim_counter.sim_count(power)
  
-@@ -80,31 +80,31 @@
+@@ -80,31 +80,31 @@ class GoodWeBat(AbstractBat):
          if power_limit is None:
              log.debug("Keine Batteriesteuerung, Selbstregelung durch Wechselrichter")
              if self.last_mode is not None:
@@ -1454,11 +1653,11 @@ diff --git a/packages/modules/devices/good_we/good_we/bat.py b/packages/modules/
  
      def power_limit_controllable(self) -> bool:
          return True
-
 diff --git a/packages/modules/devices/good_we/good_we/counter.py b/packages/modules/devices/good_we/good_we/counter.py
---- a/packages/modules/devices/good_we/good_we/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/good_we/good_we/counter.py	2026-05-03 10:32:47.435697290 +0200
-@@ -42,28 +42,28 @@
+index f8fa2f469..15cff34bf 100644
+--- a/packages/modules/devices/good_we/good_we/counter.py
++++ b/packages/modules/devices/good_we/good_we/counter.py
+@@ -42,28 +42,28 @@ class GoodWeCounter(AbstractCounter):
          with self.__tcp_client:
              if self.firmware < 9:
                  power = self.__tcp_client.read_holding_registers(
@@ -1495,11 +1694,11 @@ diff --git a/packages/modules/devices/good_we/good_we/counter.py b/packages/modu
                  imported, exported = self.peak_filter.check_values(power, imported, exported)
              else:
                  # v1.0 und v1.1 liefern keine Werte zurueck obwohl Register laut Doku gleich
-
 diff --git a/packages/modules/devices/good_we/good_we/inverter.py b/packages/modules/devices/good_we/good_we/inverter.py
---- a/packages/modules/devices/good_we/good_we/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/good_we/good_we/inverter.py	2026-05-03 10:32:47.435697290 +0200
-@@ -38,10 +38,10 @@
+index 2f77bc943..b5b008502 100644
+--- a/packages/modules/devices/good_we/good_we/inverter.py
++++ b/packages/modules/devices/good_we/good_we/inverter.py
+@@ -38,10 +38,10 @@ class GoodWeInverter(AbstractInverter):
      def update(self) -> None:
          with self.__tcp_client:
              power = sum([self.__tcp_client.read_holding_registers(
@@ -1512,11 +1711,11 @@ diff --git a/packages/modules/devices/good_we/good_we/inverter.py b/packages/mod
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/growatt/growatt/bat.py b/packages/modules/devices/growatt/growatt/bat.py
---- a/packages/modules/devices/growatt/growatt/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/growatt/growatt/bat.py	2026-05-03 10:32:47.423697058 +0200
-@@ -35,28 +35,28 @@
+index 6bbf5530a..ac60df7fb 100644
+--- a/packages/modules/devices/growatt/growatt/bat.py
++++ b/packages/modules/devices/growatt/growatt/bat.py
+@@ -35,28 +35,28 @@ class GrowattBat(AbstractBat):
      def update(self) -> None:
          if self.version == GrowattVersion.max_series:
              power_in = self.client.read_input_registers(
@@ -1555,11 +1754,11 @@ diff --git a/packages/modules/devices/growatt/growatt/bat.py b/packages/modules/
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/growatt/growatt/counter.py b/packages/modules/devices/growatt/growatt/counter.py
---- a/packages/modules/devices/growatt/growatt/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/growatt/growatt/counter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -34,40 +34,40 @@
+index ea18aef91..2f0a0d750 100644
+--- a/packages/modules/devices/growatt/growatt/counter.py
++++ b/packages/modules/devices/growatt/growatt/counter.py
+@@ -34,40 +34,40 @@ class GrowattCounter(AbstractCounter):
  
      def update(self) -> None:
          if self.version == GrowattVersion.max_series:
@@ -1614,11 +1813,11 @@ diff --git a/packages/modules/devices/growatt/growatt/counter.py b/packages/modu
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/growatt/growatt/inverter.py b/packages/modules/devices/growatt/growatt/inverter.py
---- a/packages/modules/devices/growatt/growatt/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/growatt/growatt/inverter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -35,14 +35,14 @@
+index bc6da22ac..ec05fe999 100644
+--- a/packages/modules/devices/growatt/growatt/inverter.py
++++ b/packages/modules/devices/growatt/growatt/inverter.py
+@@ -35,14 +35,14 @@ class GrowattInverter(AbstractInverter):
      def update(self) -> None:
          if self.version == GrowattVersion.max_series:
              power = self.client.read_input_registers(
@@ -1637,11 +1836,11 @@ diff --git a/packages/modules/devices/growatt/growatt/inverter.py b/packages/mod
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/huawei/huawei/bat.py b/packages/modules/devices/huawei/huawei/bat.py
---- a/packages/modules/devices/huawei/huawei/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei/bat.py	2026-05-03 10:32:47.463697831 +0200
-@@ -40,10 +40,10 @@
+index 9de263ec7..f3e29f133 100644
+--- a/packages/modules/devices/huawei/huawei/bat.py
++++ b/packages/modules/devices/huawei/huawei/bat.py
+@@ -40,10 +40,10 @@ class HuaweiBat(AbstractBat):
      def update(self) -> None:
          if self.type == HuaweiType.SDongle:
              time.sleep(1)
@@ -1654,11 +1853,11 @@ diff --git a/packages/modules/devices/huawei/huawei/bat.py b/packages/modules/de
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/huawei/huawei/counter.py b/packages/modules/devices/huawei/huawei/counter.py
---- a/packages/modules/devices/huawei/huawei/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei/counter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -40,11 +40,11 @@
+index 6b6196c9b..a4a482105 100644
+--- a/packages/modules/devices/huawei/huawei/counter.py
++++ b/packages/modules/devices/huawei/huawei/counter.py
+@@ -40,11 +40,11 @@ class HuaweiCounter(AbstractCounter):
      def update(self) -> None:
          if self.type == HuaweiType.SDongle:
              time.sleep(1)
@@ -1672,11 +1871,11 @@ diff --git a/packages/modules/devices/huawei/huawei/counter.py b/packages/module
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/huawei/huawei/inverter.py b/packages/modules/devices/huawei/huawei/inverter.py
---- a/packages/modules/devices/huawei/huawei/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei/inverter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -40,7 +40,7 @@
+index d788b5039..16eef04eb 100644
+--- a/packages/modules/devices/huawei/huawei/inverter.py
++++ b/packages/modules/devices/huawei/huawei/inverter.py
+@@ -40,7 +40,7 @@ class HuaweiInverter(AbstractInverter):
      def update(self) -> None:
          if self.type == HuaweiType.SDongle:
              time.sleep(1)
@@ -1685,11 +1884,11 @@ diff --git a/packages/modules/devices/huawei/huawei/inverter.py b/packages/modul
  
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/huawei/huawei_emma/bat.py b/packages/modules/devices/huawei/huawei_emma/bat.py
---- a/packages/modules/devices/huawei/huawei_emma/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei_emma/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -34,8 +34,8 @@
+index 9f98c8e6b..fd5d78ae1 100644
+--- a/packages/modules/devices/huawei/huawei_emma/bat.py
++++ b/packages/modules/devices/huawei/huawei_emma/bat.py
+@@ -34,8 +34,8 @@ class Huawei_EmmaBat(AbstractBat):
          self.peak_filter = PeakFilter(ComponentType.BAT, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -1700,11 +1899,11 @@ diff --git a/packages/modules/devices/huawei/huawei_emma/bat.py b/packages/modul
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/huawei/huawei_emma/counter.py b/packages/modules/devices/huawei/huawei_emma/counter.py
---- a/packages/modules/devices/huawei/huawei_emma/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei_emma/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -34,9 +34,9 @@
+index f7f3e6bd4..3aaa1fef6 100644
+--- a/packages/modules/devices/huawei/huawei_emma/counter.py
++++ b/packages/modules/devices/huawei/huawei_emma/counter.py
+@@ -34,9 +34,9 @@ class Huawei_EmmaCounter(AbstractCounter):
          self.peak_filter = PeakFilter(ComponentType.COUNTER, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -1716,11 +1915,11 @@ diff --git a/packages/modules/devices/huawei/huawei_emma/counter.py b/packages/m
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/huawei/huawei_emma/inverter.py b/packages/modules/devices/huawei/huawei_emma/inverter.py
---- a/packages/modules/devices/huawei/huawei_emma/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei_emma/inverter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -32,8 +32,8 @@
+index 11324f7dc..6e3b3c242 100644
+--- a/packages/modules/devices/huawei/huawei_emma/inverter.py
++++ b/packages/modules/devices/huawei/huawei_emma/inverter.py
+@@ -32,8 +32,8 @@ class Huawei_EmmaInverter(AbstractInverter):
          self.peak_filter = PeakFilter(ComponentType.INVERTER, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -1731,11 +1930,11 @@ diff --git a/packages/modules/devices/huawei/huawei_emma/inverter.py b/packages/
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
              power=power,
-
 diff --git a/packages/modules/devices/huawei/huawei_smartlogger/bat.py b/packages/modules/devices/huawei/huawei_smartlogger/bat.py
---- a/packages/modules/devices/huawei/huawei_smartlogger/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei_smartlogger/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -34,8 +34,8 @@
+index 4d82b598c..6585e9a16 100644
+--- a/packages/modules/devices/huawei/huawei_smartlogger/bat.py
++++ b/packages/modules/devices/huawei/huawei_smartlogger/bat.py
+@@ -34,8 +34,8 @@ class Huawei_SmartloggerBat(AbstractBat):
  
      def update(self) -> None:
          modbus_id = self.component_config.configuration.modbus_id
@@ -1746,11 +1945,11 @@ diff --git a/packages/modules/devices/huawei/huawei_smartlogger/bat.py b/package
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/huawei/huawei_smartlogger/counter.py b/packages/modules/devices/huawei/huawei_smartlogger/counter.py
---- a/packages/modules/devices/huawei/huawei_smartlogger/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei_smartlogger/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -33,12 +33,12 @@
+index 80b7ae5a5..161a64394 100644
+--- a/packages/modules/devices/huawei/huawei_smartlogger/counter.py
++++ b/packages/modules/devices/huawei/huawei_smartlogger/counter.py
+@@ -33,12 +33,12 @@ class Huawei_SmartloggerCounter(AbstractCounter):
  
      def update(self) -> None:
          modbus_id = self.component_config.configuration.modbus_id
@@ -1767,11 +1966,11 @@ diff --git a/packages/modules/devices/huawei/huawei_smartlogger/counter.py b/pac
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/huawei/huawei_smartlogger/inverter.py b/packages/modules/devices/huawei/huawei_smartlogger/inverter.py
---- a/packages/modules/devices/huawei/huawei_smartlogger/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/huawei/huawei_smartlogger/inverter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -37,8 +37,8 @@
+index efe560405..500a7208a 100644
+--- a/packages/modules/devices/huawei/huawei_smartlogger/inverter.py
++++ b/packages/modules/devices/huawei/huawei_smartlogger/inverter.py
+@@ -37,8 +37,8 @@ class Huawei_SmartloggerInverter(AbstractInverter):
  
      def update(self) -> None:
          modbus_id = self.component_config.configuration.modbus_id
@@ -1782,10 +1981,10 @@ diff --git a/packages/modules/devices/huawei/huawei_smartlogger/inverter.py b/pa
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/idm/idm/counter.py b/packages/modules/devices/idm/idm/counter.py
---- a/packages/modules/devices/idm/idm/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/idm/idm/counter.py	2026-05-03 10:32:47.451697600 +0200
+index 6712dc158..b7899b43f 100644
+--- a/packages/modules/devices/idm/idm/counter.py
++++ b/packages/modules/devices/idm/idm/counter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -1794,7 +1993,7 @@ diff --git a/packages/modules/devices/idm/idm/counter.py b/packages/modules/devi
  
  from modules.common.abstract_device import AbstractCounter
  from modules.common.component_state import CounterState
-@@ -37,7 +37,7 @@
+@@ -37,7 +37,7 @@ class IDMCounter(AbstractCounter):
      def update(self):
          unit = self.modbus_id
          power = self.client.read_input_registers(4122, ModbusDataType.FLOAT_32,
@@ -1803,11 +2002,11 @@ diff --git a/packages/modules/devices/idm/idm/counter.py b/packages/modules/devi
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/janitza/janitza/bat.py b/packages/modules/devices/janitza/janitza/bat.py
---- a/packages/modules/devices/janitza/janitza/bat.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/janitza/janitza/bat.py	2026-05-03 10:32:47.447697522 +0200
-@@ -34,7 +34,7 @@
+index 73d927a81..4b3a06c8a 100644
+--- a/packages/modules/devices/janitza/janitza/bat.py
++++ b/packages/modules/devices/janitza/janitza/bat.py
+@@ -34,7 +34,7 @@ class JanitzaBat(AbstractBat):
          self.peak_filter = PeakFilter(ComponentType.BAT, self.component_config.id, self.fault_state)
  
      def update(self):
@@ -1816,11 +2015,11 @@ diff --git a/packages/modules/devices/janitza/janitza/bat.py b/packages/modules/
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/janitza/janitza/counter.py b/packages/modules/devices/janitza/janitza/counter.py
---- a/packages/modules/devices/janitza/janitza/counter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/janitza/janitza/counter.py	2026-05-03 10:32:47.447697522 +0200
-@@ -36,16 +36,16 @@
+index 72e054cd2..3d8ea1e6e 100644
+--- a/packages/modules/devices/janitza/janitza/counter.py
++++ b/packages/modules/devices/janitza/janitza/counter.py
+@@ -36,16 +36,16 @@ class JanitzaCounter(AbstractCounter):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -1843,11 +2042,11 @@ diff --git a/packages/modules/devices/janitza/janitza/counter.py b/packages/modu
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/janitza/janitza/inverter.py b/packages/modules/devices/janitza/janitza/inverter.py
---- a/packages/modules/devices/janitza/janitza/inverter.py	2026-05-03 09:42:28.275124242 +0200
-+++ b/packages/modules/devices/janitza/janitza/inverter.py	2026-05-03 10:32:47.447697522 +0200
-@@ -34,7 +34,7 @@
+index d3637eaed..598e45166 100644
+--- a/packages/modules/devices/janitza/janitza/inverter.py
++++ b/packages/modules/devices/janitza/janitza/inverter.py
+@@ -34,7 +34,7 @@ class JanitzaInverter(AbstractInverter):
          self.peak_filter = PeakFilter(ComponentType.INVERTER, self.component_config.id, self.fault_state)
  
      def update(self):
@@ -1856,11 +2055,11 @@ diff --git a/packages/modules/devices/janitza/janitza/inverter.py b/packages/mod
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/kaco/kaco_tx/scale.py b/packages/modules/devices/kaco/kaco_tx/scale.py
---- a/packages/modules/devices/kaco/kaco_tx/scale.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kaco/kaco_tx/scale.py	2026-05-03 10:32:47.427697136 +0200
-@@ -21,7 +21,7 @@
+index bfe78d2dd..b54d14385 100644
+--- a/packages/modules/devices/kaco/kaco_tx/scale.py
++++ b/packages/modules/devices/kaco/kaco_tx/scale.py
+@@ -21,7 +21,7 @@ def scale_registers(registers: List[Number]) -> List[float]:
  def create_scaled_reader(client: ModbusTcpClient_, modbus_id: int, type: ModbusDataType):
      def scaled_reader(address: int, count: int):
          return scale_registers(
@@ -1869,11 +2068,11 @@ diff --git a/packages/modules/devices/kaco/kaco_tx/scale.py b/packages/modules/d
          )
  
      return scaled_reader
-
 diff --git a/packages/modules/devices/kostal/kostal_piko_ci/counter.py b/packages/modules/devices/kostal/kostal_piko_ci/counter.py
---- a/packages/modules/devices/kostal/kostal_piko_ci/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_piko_ci/counter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -34,10 +34,10 @@
+index d8003c2c2..1b5343da8 100644
+--- a/packages/modules/devices/kostal/kostal_piko_ci/counter.py
++++ b/packages/modules/devices/kostal/kostal_piko_ci/counter.py
+@@ -34,10 +34,10 @@ class KostalPikoCiCounter(AbstractCounter):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -1887,11 +2086,11 @@ diff --git a/packages/modules/devices/kostal/kostal_piko_ci/counter.py b/package
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/kostal/kostal_piko_ci/inverter.py b/packages/modules/devices/kostal/kostal_piko_ci/inverter.py
---- a/packages/modules/devices/kostal/kostal_piko_ci/inverter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_piko_ci/inverter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -32,10 +32,10 @@
+index a9851ac45..34a40d908 100644
+--- a/packages/modules/devices/kostal/kostal_piko_ci/inverter.py
++++ b/packages/modules/devices/kostal/kostal_piko_ci/inverter.py
+@@ -32,10 +32,10 @@ class KostalPikoCiInverter(AbstractInverter):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -1905,10 +2104,10 @@ diff --git a/packages/modules/devices/kostal/kostal_piko_ci/inverter.py b/packag
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
              power=power,
-
 diff --git a/packages/modules/devices/kostal/kostal_plenticore/bat.py b/packages/modules/devices/kostal/kostal_plenticore/bat.py
---- a/packages/modules/devices/kostal/kostal_plenticore/bat.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_plenticore/bat.py	2026-05-03 10:32:47.463697831 +0200
+index 4c10ce66c..d787e315b 100644
+--- a/packages/modules/devices/kostal/kostal_plenticore/bat.py
++++ b/packages/modules/devices/kostal/kostal_plenticore/bat.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/env python3
  import logging
@@ -1918,7 +2117,7 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/bat.py b/packages
  
  from modules.common.abstract_device import AbstractBat
  from modules.common.component_state import BatState
-@@ -41,12 +41,12 @@
+@@ -41,12 +41,12 @@ class KostalPlenticoreBat(AbstractBat):
  
      def update(self) -> None:
          power = self.client.read_holding_registers(
@@ -1934,7 +2133,7 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/bat.py b/packages
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-@@ -73,21 +73,21 @@
+@@ -73,21 +73,21 @@ class KostalPlenticoreBat(AbstractBat):
              # wiederholt auf Stop setzen damit sich Register nicht zurücksetzt
              log.debug("Aktive Batteriesteuerung. Batterie wird auf Stop gesetzt und nicht entladen")
              self.client.write_register(1034, 0.0, data_type=ModbusDataType.FLOAT_32,
@@ -1959,10 +2158,10 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/bat.py b/packages
  
      def power_limit_controllable(self) -> bool:
          return True
-
 diff --git a/packages/modules/devices/kostal/kostal_plenticore/counter.py b/packages/modules/devices/kostal/kostal_plenticore/counter.py
---- a/packages/modules/devices/kostal/kostal_plenticore/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_plenticore/counter.py	2026-05-03 10:32:47.463697831 +0200
+index d12db3eec..9652da699 100644
+--- a/packages/modules/devices/kostal/kostal_plenticore/counter.py
++++ b/packages/modules/devices/kostal/kostal_plenticore/counter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -1971,7 +2170,7 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/counter.py b/pack
  
  from modules.common.abstract_device import AbstractCounter
  from modules.common.component_state import CounterState
-@@ -38,17 +38,17 @@
+@@ -38,17 +38,17 @@ class KostalPlenticoreCounter(AbstractCounter):
  
      def update(self) -> None:
          power = self.client.read_holding_registers(
@@ -1995,10 +2194,10 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/counter.py b/pack
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/kostal/kostal_plenticore/device.py b/packages/modules/devices/kostal/kostal_plenticore/device.py
---- a/packages/modules/devices/kostal/kostal_plenticore/device.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_plenticore/device.py	2026-05-03 10:32:47.463697831 +0200
+index e911c90a4..120364091 100644
+--- a/packages/modules/devices/kostal/kostal_plenticore/device.py
++++ b/packages/modules/devices/kostal/kostal_plenticore/device.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/env python3
  import logging
@@ -2008,7 +2207,7 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/device.py b/packa
  
  from modules.common.abstract_device import DeviceDescriptor
  from modules.common.configurable_device import ConfigurableDevice, ComponentFactoryByType, MultiComponentUpdater
-@@ -54,7 +54,7 @@
+@@ -54,7 +54,7 @@ def create_device(device_config: KostalPlenticore):
          nonlocal client, endianess
          client = ModbusTcpClient_(device_config.configuration.ip_address, device_config.configuration.port)
          endianess = Endian.Big if client.read_holding_registers(
@@ -2017,10 +2216,10 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/device.py b/packa
  
      return ConfigurableDevice(
          device_config=device_config,
-
 diff --git a/packages/modules/devices/kostal/kostal_plenticore/inverter.py b/packages/modules/devices/kostal/kostal_plenticore/inverter.py
---- a/packages/modules/devices/kostal/kostal_plenticore/inverter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_plenticore/inverter.py	2026-05-03 10:32:47.463697831 +0200
+index 8712ba8ba..6f51c226c 100644
+--- a/packages/modules/devices/kostal/kostal_plenticore/inverter.py
++++ b/packages/modules/devices/kostal/kostal_plenticore/inverter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -2029,7 +2228,7 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/inverter.py b/pac
  
  from modules.common.abstract_device import AbstractInverter
  from modules.common.component_state import InverterState
-@@ -42,13 +42,13 @@
+@@ -42,13 +42,13 @@ class KostalPlenticoreInverter(AbstractInverter):
  
      def update(self) -> None:
          power = self.client.read_holding_registers(
@@ -2046,11 +2245,11 @@ diff --git a/packages/modules/devices/kostal/kostal_plenticore/inverter.py b/pac
              self.fault_state.no_error()
          except Exception:
              dc_power = None
-
 diff --git a/packages/modules/devices/kostal/kostal_sem/counter.py b/packages/modules/devices/kostal/kostal_sem/counter.py
---- a/packages/modules/devices/kostal/kostal_sem/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/kostal/kostal_sem/counter.py	2026-05-03 10:32:47.463697831 +0200
-@@ -32,23 +32,23 @@
+index a14fa6682..db2f06142 100644
+--- a/packages/modules/devices/kostal/kostal_sem/counter.py
++++ b/packages/modules/devices/kostal/kostal_sem/counter.py
+@@ -32,23 +32,23 @@ class KostalSemCounter(AbstractCounter):
      def update(self):
          with self.__tcp_client:
              voltages = [self.__tcp_client.read_holding_registers(
@@ -2081,11 +2280,11 @@ diff --git a/packages/modules/devices/kostal/kostal_sem/counter.py b/packages/mo
              power = (power_temp[0] if power_temp[0] >= power_temp[1] else -power_temp[1]) * 0.1
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/marstek/venus_c_e/bat.py b/packages/modules/devices/marstek/venus_c_e/bat.py
---- a/packages/modules/devices/marstek/venus_c_e/bat.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/marstek/venus_c_e/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -31,11 +31,11 @@
+index 2c848e23a..f2c3f13c5 100644
+--- a/packages/modules/devices/marstek/venus_c_e/bat.py
++++ b/packages/modules/devices/marstek/venus_c_e/bat.py
+@@ -31,11 +31,11 @@ class VenusCEBat(AbstractBat):
          self.peak_filter = PeakFilter(ComponentType.BAT, self.component_config.id, self.fault_state)
  
      def _read_reg(self, addr: int, type_: ModbusDataType) -> Union[int, float]:
@@ -2099,11 +2298,11 @@ diff --git a/packages/modules/devices/marstek/venus_c_e/bat.py b/packages/module
  
      def update(self) -> None:
          power = -self._read_reg(32202, ModbusDataType.INT_32)
-
 diff --git a/packages/modules/devices/mtec/mtec/bat.py b/packages/modules/devices/mtec/mtec/bat.py
---- a/packages/modules/devices/mtec/mtec/bat.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/mtec/mtec/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -39,12 +39,12 @@
+index ffe652a90..bfbcd0e9f 100644
+--- a/packages/modules/devices/mtec/mtec/bat.py
++++ b/packages/modules/devices/mtec/mtec/bat.py
+@@ -39,12 +39,12 @@ class MTecBat(AbstractBat):
          generation = self.component_config.configuration.generation
  
          if generation == 2:
@@ -2120,11 +2319,11 @@ diff --git a/packages/modules/devices/mtec/mtec/bat.py b/packages/modules/device
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/mtec/mtec/counter.py b/packages/modules/devices/mtec/mtec/counter.py
---- a/packages/modules/devices/mtec/mtec/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/mtec/mtec/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -34,8 +34,8 @@
+index cdbec9fb6..7a499f546 100644
+--- a/packages/modules/devices/mtec/mtec/counter.py
++++ b/packages/modules/devices/mtec/mtec/counter.py
+@@ -34,8 +34,8 @@ class MTecCounter(AbstractCounter):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -2135,11 +2334,11 @@ diff --git a/packages/modules/devices/mtec/mtec/counter.py b/packages/modules/de
          powers = [value * -1 for value in powers]
  
          self.peak_filter.check_values(power)
-
 diff --git a/packages/modules/devices/mtec/mtec/inverter.py b/packages/modules/devices/mtec/mtec/inverter.py
---- a/packages/modules/devices/mtec/mtec/inverter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/mtec/mtec/inverter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -34,7 +34,7 @@
+index fbd597535..139cff48e 100644
+--- a/packages/modules/devices/mtec/mtec/inverter.py
++++ b/packages/modules/devices/mtec/mtec/inverter.py
+@@ -34,7 +34,7 @@ class MTecInverter(AbstractInverter):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -2148,10 +2347,10 @@ diff --git a/packages/modules/devices/mtec/mtec/inverter.py b/packages/modules/d
  
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/nibe/nibe/counter.py b/packages/modules/devices/nibe/nibe/counter.py
---- a/packages/modules/devices/nibe/nibe/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/nibe/nibe/counter.py	2026-05-03 10:32:47.451697600 +0200
+index b20830a29..389df061a 100644
+--- a/packages/modules/devices/nibe/nibe/counter.py
++++ b/packages/modules/devices/nibe/nibe/counter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -2160,7 +2359,7 @@ diff --git a/packages/modules/devices/nibe/nibe/counter.py b/packages/modules/de
  
  from modules.common.abstract_device import AbstractCounter
  from modules.common.component_state import CounterState
-@@ -34,7 +34,7 @@
+@@ -34,7 +34,7 @@ class NibeCounter(AbstractCounter):
  
      def update(self):
          unit = self.component_config.configuration.modbus_id
@@ -2169,11 +2368,11 @@ diff --git a/packages/modules/devices/nibe/nibe/counter.py b/packages/modules/de
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/orno/orno/counter.py b/packages/modules/devices/orno/orno/counter.py
---- a/packages/modules/devices/orno/orno/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/orno/orno/counter.py	2026-05-03 10:32:47.467697909 +0200
-@@ -29,9 +29,9 @@
+index 2b5c19ed6..71c7f651b 100644
+--- a/packages/modules/devices/orno/orno/counter.py
++++ b/packages/modules/devices/orno/orno/counter.py
+@@ -29,9 +29,9 @@ class OrnoCounter(AbstractCounter):
  
      def update(self):
          power = self.client.read_holding_registers(
@@ -2185,10 +2384,10 @@ diff --git a/packages/modules/devices/orno/orno/counter.py b/packages/modules/de
          imported, _ = self.peak_filter.check_values(power, imported, None)
          counter_state = CounterState(
              imported=imported,
-
 diff --git a/packages/modules/devices/orno/orno/device.py b/packages/modules/devices/orno/orno/device.py
---- a/packages/modules/devices/orno/orno/device.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/orno/orno/device.py	2026-05-03 10:32:47.467697909 +0200
+index 169bc971f..232073123 100644
+--- a/packages/modules/devices/orno/orno/device.py
++++ b/packages/modules/devices/orno/orno/device.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  import logging
@@ -2197,7 +2396,7 @@ diff --git a/packages/modules/devices/orno/orno/device.py b/packages/modules/dev
  from typing import Iterable
  
  from modules.common.abstract_device import DeviceDescriptor
-@@ -29,7 +29,7 @@
+@@ -29,7 +29,7 @@ def create_device(device_config: Orno):
      def initializer():
          nonlocal client
          client = ModbusTcpClient_(device_config.configuration.ip_address,
@@ -2206,11 +2405,11 @@ diff --git a/packages/modules/devices/orno/orno/device.py b/packages/modules/dev
  
      return ConfigurableDevice(
          device_config=device_config,
-
 diff --git a/packages/modules/devices/powerdog/powerdog/counter.py b/packages/modules/devices/powerdog/powerdog/counter.py
---- a/packages/modules/devices/powerdog/powerdog/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/powerdog/powerdog/counter.py	2026-05-03 10:32:47.427697136 +0200
-@@ -41,13 +41,13 @@
+index 9319da99e..7e45fc42e 100644
+--- a/packages/modules/devices/powerdog/powerdog/counter.py
++++ b/packages/modules/devices/powerdog/powerdog/counter.py
+@@ -41,13 +41,13 @@ class PowerdogCounter(AbstractCounter):
          with self.__tcp_client:
              if self.component_config.configuration.position_evu:
                  export_power = self.__tcp_client.read_input_registers(
@@ -2227,11 +2426,11 @@ diff --git a/packages/modules/devices/powerdog/powerdog/counter.py b/packages/mo
                  power = home_consumption + inverter_power
                  log.debug("Powerdog Hausverbrauch[W]: " + str(home_consumption))
  
-
 diff --git a/packages/modules/devices/powerdog/powerdog/inverter.py b/packages/modules/devices/powerdog/powerdog/inverter.py
---- a/packages/modules/devices/powerdog/powerdog/inverter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/powerdog/powerdog/inverter.py	2026-05-03 10:32:47.427697136 +0200
-@@ -39,7 +39,7 @@
+index 241cdf01a..5c9804202 100644
+--- a/packages/modules/devices/powerdog/powerdog/inverter.py
++++ b/packages/modules/devices/powerdog/powerdog/inverter.py
+@@ -39,7 +39,7 @@ class PowerdogInverter(AbstractInverter):
  
      def update(self) -> float:
          with self.__tcp_client:
@@ -2240,11 +2439,11 @@ diff --git a/packages/modules/devices/powerdog/powerdog/inverter.py b/packages/m
  
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/qcells/qcells/bat.py b/packages/modules/devices/qcells/qcells/bat.py
---- a/packages/modules/devices/qcells/qcells/bat.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/qcells/qcells/bat.py	2026-05-03 10:32:47.467697909 +0200
-@@ -30,12 +30,12 @@
+index 3a68bd58c..b4e2b5d16 100644
+--- a/packages/modules/devices/qcells/qcells/bat.py
++++ b/packages/modules/devices/qcells/qcells/bat.py
+@@ -30,12 +30,12 @@ class QCellsBat(AbstractBat):
          self.peak_filter = PeakFilter(ComponentType.BAT, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -2261,10 +2460,10 @@ diff --git a/packages/modules/devices/qcells/qcells/bat.py b/packages/modules/de
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/qcells/qcells/counter.py b/packages/modules/devices/qcells/qcells/counter.py
---- a/packages/modules/devices/qcells/qcells/counter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/qcells/qcells/counter.py	2026-05-03 10:32:47.467697909 +0200
+index 3102cf7f4..d00abe27c 100644
+--- a/packages/modules/devices/qcells/qcells/counter.py
++++ b/packages/modules/devices/qcells/qcells/counter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -2273,7 +2472,7 @@ diff --git a/packages/modules/devices/qcells/qcells/counter.py b/packages/module
  
  from modules.common.abstract_device import AbstractCounter
  from modules.common.component_state import CounterState
-@@ -32,22 +32,22 @@
+@@ -32,22 +32,22 @@ class QCellsCounter(AbstractCounter):
  
      def update(self) -> None:
          power = self.client.read_input_registers(0x0046, ModbusDataType.INT_32, wordorder=Endian.Little,
@@ -2302,7 +2501,7 @@ diff --git a/packages/modules/devices/qcells/qcells/counter.py b/packages/module
              ) / 10]
              if voltages[0] < 1:
                  voltages[0] = 230
-@@ -60,7 +60,7 @@
+@@ -60,7 +60,7 @@ class QCellsCounter(AbstractCounter):
          exported, imported = [value * 10
                                for value in self.client.read_input_registers(
                                    0x0048, [ModbusDataType.UINT_32] * 2,
@@ -2311,10 +2510,10 @@ diff --git a/packages/modules/devices/qcells/qcells/counter.py b/packages/module
                                )]
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
-
 diff --git a/packages/modules/devices/qcells/qcells/inverter.py b/packages/modules/devices/qcells/qcells/inverter.py
---- a/packages/modules/devices/qcells/qcells/inverter.py	2026-05-03 09:42:28.279124347 +0200
-+++ b/packages/modules/devices/qcells/qcells/inverter.py	2026-05-03 10:32:47.467697909 +0200
+index 4f147027d..71ad8a039 100644
+--- a/packages/modules/devices/qcells/qcells/inverter.py
++++ b/packages/modules/devices/qcells/qcells/inverter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -2323,7 +2522,7 @@ diff --git a/packages/modules/devices/qcells/qcells/inverter.py b/packages/modul
  
  from modules.common.abstract_device import AbstractInverter
  from modules.common.component_state import InverterState
-@@ -32,14 +32,14 @@
+@@ -32,14 +32,14 @@ class QCellsInverter(AbstractInverter):
  
      def update(self) -> None:
          power_string1 = (self.client.read_input_registers(
@@ -2343,11 +2542,11 @@ diff --git a/packages/modules/devices/qcells/qcells/inverter.py b/packages/modul
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/saxpower/saxpower/bat.py b/packages/modules/devices/saxpower/saxpower/bat.py
---- a/packages/modules/devices/saxpower/saxpower/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/saxpower/saxpower/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -37,7 +37,7 @@
+index 6149d2b52..41070665d 100644
+--- a/packages/modules/devices/saxpower/saxpower/bat.py
++++ b/packages/modules/devices/saxpower/saxpower/bat.py
+@@ -37,7 +37,7 @@ class SaxpowerBat(AbstractBat):
      def update(self) -> None:
          with self.__tcp_client:
              # Die beiden Register müssen zwingend zusammen ausgelesen werden, sonst scheitert die zweite Abfrage.
@@ -2356,11 +2555,11 @@ diff --git a/packages/modules/devices/saxpower/saxpower/bat.py b/packages/module
              power = power * -1 + 16384
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/saxpower/saxpower/counter.py b/packages/modules/devices/saxpower/saxpower/counter.py
---- a/packages/modules/devices/saxpower/saxpower/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/saxpower/saxpower/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -34,7 +34,7 @@
+index bc6ace726..a8a4272b4 100644
+--- a/packages/modules/devices/saxpower/saxpower/counter.py
++++ b/packages/modules/devices/saxpower/saxpower/counter.py
+@@ -34,7 +34,7 @@ class SaxpowerCounter(AbstractCounter):
          self.peak_filter = PeakFilter(ComponentType.COUNTER, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -2369,11 +2568,11 @@ diff --git a/packages/modules/devices/saxpower/saxpower/counter.py b/packages/mo
          power = power - 16384
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/siemens/siemens/bat.py b/packages/modules/devices/siemens/siemens/bat.py
---- a/packages/modules/devices/siemens/siemens/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/siemens/siemens/bat.py	2026-05-03 10:32:47.419696981 +0200
-@@ -36,8 +36,8 @@
+index 3200fffb5..da7a74eb6 100644
+--- a/packages/modules/devices/siemens/siemens/bat.py
++++ b/packages/modules/devices/siemens/siemens/bat.py
+@@ -36,8 +36,8 @@ class SiemensBat(AbstractBat):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -2384,11 +2583,11 @@ diff --git a/packages/modules/devices/siemens/siemens/bat.py b/packages/modules/
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/siemens/siemens/counter.py b/packages/modules/devices/siemens/siemens/counter.py
---- a/packages/modules/devices/siemens/siemens/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/siemens/siemens/counter.py	2026-05-03 10:32:47.419696981 +0200
-@@ -36,7 +36,7 @@
+index 6f694febd..2ef16010d 100644
+--- a/packages/modules/devices/siemens/siemens/counter.py
++++ b/packages/modules/devices/siemens/siemens/counter.py
+@@ -36,7 +36,7 @@ class SiemensCounter(AbstractCounter):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -2397,11 +2596,11 @@ diff --git a/packages/modules/devices/siemens/siemens/counter.py b/packages/modu
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/siemens/siemens/inverter.py b/packages/modules/devices/siemens/siemens/inverter.py
---- a/packages/modules/devices/siemens/siemens/inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/siemens/siemens/inverter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -36,7 +36,7 @@
+index c190ee723..4c452b317 100644
+--- a/packages/modules/devices/siemens/siemens/inverter.py
++++ b/packages/modules/devices/siemens/siemens/inverter.py
+@@ -36,7 +36,7 @@ class SiemensInverter(AbstractInverter):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -2410,11 +2609,11 @@ diff --git a/packages/modules/devices/siemens/siemens/inverter.py b/packages/mod
  
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/siemens/siemens_sentron/bat.py b/packages/modules/devices/siemens/siemens_sentron/bat.py
---- a/packages/modules/devices/siemens/siemens_sentron/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/siemens/siemens_sentron/bat.py	2026-05-03 10:32:47.423697058 +0200
-@@ -32,9 +32,9 @@
+index fa25f09b0..5c143a075 100644
+--- a/packages/modules/devices/siemens/siemens_sentron/bat.py
++++ b/packages/modules/devices/siemens/siemens_sentron/bat.py
+@@ -32,9 +32,9 @@ class SiemensSentronBat(AbstractBat):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -2427,11 +2626,11 @@ diff --git a/packages/modules/devices/siemens/siemens_sentron/bat.py b/packages/
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/siemens/siemens_sentron/counter.py b/packages/modules/devices/siemens/siemens_sentron/counter.py
---- a/packages/modules/devices/siemens/siemens_sentron/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/siemens/siemens_sentron/counter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -32,16 +32,16 @@
+index b3e2e25f5..313cf151e 100644
+--- a/packages/modules/devices/siemens/siemens_sentron/counter.py
++++ b/packages/modules/devices/siemens/siemens_sentron/counter.py
+@@ -32,16 +32,16 @@ class SiemensSentronCounter(AbstractCounter):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -2456,11 +2655,11 @@ diff --git a/packages/modules/devices/siemens/siemens_sentron/counter.py b/packa
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/siemens/siemens_sentron/inverter.py b/packages/modules/devices/siemens/siemens_sentron/inverter.py
---- a/packages/modules/devices/siemens/siemens_sentron/inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/siemens/siemens_sentron/inverter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -32,8 +32,8 @@
+index 6a54107a2..626a51cff 100644
+--- a/packages/modules/devices/siemens/siemens_sentron/inverter.py
++++ b/packages/modules/devices/siemens/siemens_sentron/inverter.py
+@@ -32,8 +32,8 @@ class SiemensSentronInverter(AbstractInverter):
  
      def update(self) -> None:
          with self.__tcp_client:
@@ -2471,11 +2670,11 @@ diff --git a/packages/modules/devices/siemens/siemens_sentron/inverter.py b/pack
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/sigenergy/sigenergy/bat.py b/packages/modules/devices/sigenergy/sigenergy/bat.py
---- a/packages/modules/devices/sigenergy/sigenergy/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sigenergy/sigenergy/bat.py	2026-05-03 10:32:47.443697445 +0200
-@@ -37,9 +37,9 @@
+index 26cb612de..0abf6015b 100644
+--- a/packages/modules/devices/sigenergy/sigenergy/bat.py
++++ b/packages/modules/devices/sigenergy/sigenergy/bat.py
+@@ -37,9 +37,9 @@ class SigenergyBat(AbstractBat):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -2487,7 +2686,7 @@ diff --git a/packages/modules/devices/sigenergy/sigenergy/bat.py b/packages/modu
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-@@ -59,13 +59,13 @@
+@@ -59,13 +59,13 @@ class SigenergyBat(AbstractBat):
              log.debug("Keine Batteriesteuerung, Selbstregelung durch Wechselrichter")
              if self.last_mode is not None:
                  # Entladesperre ab 5%, Ansonsten Eigenregelung
@@ -2503,11 +2702,11 @@ diff --git a/packages/modules/devices/sigenergy/sigenergy/bat.py b/packages/modu
                  self.last_mode = 'stop'
  
      def power_limit_controllable(self) -> bool:
-
 diff --git a/packages/modules/devices/sigenergy/sigenergy/counter.py b/packages/modules/devices/sigenergy/sigenergy/counter.py
---- a/packages/modules/devices/sigenergy/sigenergy/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sigenergy/sigenergy/counter.py	2026-05-03 10:32:47.443697445 +0200
-@@ -32,8 +32,8 @@
+index f8d4e2b7c..a861b3177 100644
+--- a/packages/modules/devices/sigenergy/sigenergy/counter.py
++++ b/packages/modules/devices/sigenergy/sigenergy/counter.py
+@@ -32,8 +32,8 @@ class SigenergyCounter:
      def update(self):
          unit = self.component_config.configuration.modbus_id
  
@@ -2518,11 +2717,11 @@ diff --git a/packages/modules/devices/sigenergy/sigenergy/counter.py b/packages/
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/sigenergy/sigenergy/inverter.py b/packages/modules/devices/sigenergy/sigenergy/inverter.py
---- a/packages/modules/devices/sigenergy/sigenergy/inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sigenergy/sigenergy/inverter.py	2026-05-03 10:32:47.443697445 +0200
-@@ -33,7 +33,7 @@
+index 06c1d824d..3bdb9d0cc 100644
+--- a/packages/modules/devices/sigenergy/sigenergy/inverter.py
++++ b/packages/modules/devices/sigenergy/sigenergy/inverter.py
+@@ -33,7 +33,7 @@ class SigenergyInverter:
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -2531,11 +2730,11 @@ diff --git a/packages/modules/devices/sigenergy/sigenergy/inverter.py b/packages
  
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/sma/sma_sunny_boy/bat.py b/packages/modules/devices/sma/sma_sunny_boy/bat.py
---- a/packages/modules/devices/sma/sma_sunny_boy/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sma/sma_sunny_boy/bat.py	2026-05-03 10:32:47.423697058 +0200
-@@ -35,16 +35,16 @@
+index b405760df..debf53f96 100644
+--- a/packages/modules/devices/sma/sma_sunny_boy/bat.py
++++ b/packages/modules/devices/sma/sma_sunny_boy/bat.py
+@@ -35,16 +35,16 @@ class SunnyBoyBat(AbstractBat):
      def read(self) -> BatState:
          unit = self.component_config.configuration.modbus_id
  
@@ -2557,11 +2756,11 @@ diff --git a/packages/modules/devices/sma/sma_sunny_boy/bat.py b/packages/module
  
          if exported == self.SMA_UINT_64_NAN or imported == self.SMA_UINT_64_NAN:
              raise ValueError(f'Batterie lieferte nicht plausible Werte. Export: {exported}, Import: {imported}. ',
-
 diff --git a/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py b/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py
---- a/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py	2026-05-03 10:32:47.423697058 +0200
-@@ -128,14 +128,14 @@
+index 8e320ea5b..554d9eb44 100644
+--- a/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py
++++ b/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py
+@@ -128,14 +128,14 @@ class SunnyBoySmartEnergyBat(AbstractBat):
          values = {}
          for key in register_names:
              address, data_type = self.REGISTERS[key]
@@ -2578,11 +2777,11 @@ diff --git a/packages/modules/devices/sma/sma_sunny_boy/bat_smart_energy.py b/pa
              log.debug(f"Neuer Wert {value} in Register {address} geschrieben.")
  
      def power_limit_controllable(self) -> bool:
-
 diff --git a/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py b/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py
---- a/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py	2026-05-03 10:32:47.423697058 +0200
-@@ -35,8 +35,8 @@
+index 166898839..d5d5b30eb 100644
+--- a/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py
++++ b/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py
+@@ -35,8 +35,8 @@ class TesvoltBat(AbstractBat):
          self.peak_filter = PeakFilter(ComponentType.BAT, self.component_config.id, self.fault_state)
  
      def update(self) -> None:
@@ -2593,11 +2792,11 @@ diff --git a/packages/modules/devices/sma/sma_sunny_boy/bat_tesvolt.py b/package
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/sma/sma_sunny_boy/counter.py b/packages/modules/devices/sma/sma_sunny_boy/counter.py
---- a/packages/modules/devices/sma/sma_sunny_boy/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sma/sma_sunny_boy/counter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -35,8 +35,8 @@
+index 5f14524d6..ffbd31fcb 100644
+--- a/packages/modules/devices/sma/sma_sunny_boy/counter.py
++++ b/packages/modules/devices/sma/sma_sunny_boy/counter.py
+@@ -35,8 +35,8 @@ class SmaSunnyBoyCounter(AbstractCounter):
      def update(self):
          unit = self.component_config.configuration.modbus_id
  
@@ -2608,11 +2807,11 @@ diff --git a/packages/modules/devices/sma/sma_sunny_boy/counter.py b/packages/mo
          if imp > 5:
              power = imp
          else:
-
 diff --git a/packages/modules/devices/sma/sma_sunny_boy/inverter.py b/packages/modules/devices/sma/sma_sunny_boy/inverter.py
---- a/packages/modules/devices/sma/sma_sunny_boy/inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sma/sma_sunny_boy/inverter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -50,39 +50,39 @@
+index 39db80d84..45a23ef58 100644
+--- a/packages/modules/devices/sma/sma_sunny_boy/inverter.py
++++ b/packages/modules/devices/sma/sma_sunny_boy/inverter.py
+@@ -50,39 +50,39 @@ class SmaSunnyBoyInverter(AbstractInverter):
  
          if self.component_config.configuration.version == SmaInverterVersion.default:
              # AC Wirkleistung über alle Phasen (W) [Pac]
@@ -2665,11 +2864,11 @@ diff --git a/packages/modules/devices/sma/sma_sunny_boy/inverter.py b/packages/m
              # DC-Power = power_total - Cluster-Controller gibt in Register 30775 immer korrekte Werte aus,
              # daher ist wie bei SmaInverterVersion.default keine Prüfung auf DC-Leistung notwendig.
              # Aus kompatibilitätsgründen wird dc_power auf den Wert der AC-Wirkleistung gesetzt.
-
 diff --git a/packages/modules/devices/sma/sma_sunny_island/bat.py b/packages/modules/devices/sma/sma_sunny_island/bat.py
---- a/packages/modules/devices/sma/sma_sunny_island/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sma/sma_sunny_island/bat.py	2026-05-03 10:32:47.423697058 +0200
-@@ -32,10 +32,10 @@
+index 7d866b303..834565129 100644
+--- a/packages/modules/devices/sma/sma_sunny_island/bat.py
++++ b/packages/modules/devices/sma/sma_sunny_island/bat.py
+@@ -32,10 +32,10 @@ class SunnyIslandBat(AbstractBat):
          unit = self.component_config.configuration.modbus_id
  
          with self.__tcp_client:
@@ -2683,11 +2882,11 @@ diff --git a/packages/modules/devices/sma/sma_sunny_island/bat.py b/packages/mod
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          return BatState(
-
 diff --git a/packages/modules/devices/sofar/sofar/bat.py b/packages/modules/devices/sofar/sofar/bat.py
---- a/packages/modules/devices/sofar/sofar/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sofar/sofar/bat.py	2026-05-03 10:32:47.451697600 +0200
-@@ -32,21 +32,21 @@
+index c06c9ec0b..13b02f692 100644
+--- a/packages/modules/devices/sofar/sofar/bat.py
++++ b/packages/modules/devices/sofar/sofar/bat.py
+@@ -32,21 +32,21 @@ class SofarBat(AbstractBat):
      def update(self) -> None:
          # 0x900D High 8 bits: the number of battery packs in parallel
          # Lower 8 bits: the number of battery strings in the battery pack
@@ -2714,11 +2913,11 @@ diff --git a/packages/modules/devices/sofar/sofar/bat.py b/packages/modules/devi
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/sofar/sofar/counter.py b/packages/modules/devices/sofar/sofar/counter.py
---- a/packages/modules/devices/sofar/sofar/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sofar/sofar/counter.py	2026-05-03 10:32:47.451697600 +0200
-@@ -32,23 +32,23 @@
+index bed82dc32..8ba5810ee 100644
+--- a/packages/modules/devices/sofar/sofar/counter.py
++++ b/packages/modules/devices/sofar/sofar/counter.py
+@@ -32,23 +32,23 @@ class SofarCounter(AbstractCounter):
      def update(self):
          # 0x0485 ActivePower_output_total Int16 in kW accuracy 0,01 discharge + charge -
          # 0x0488 ActivePower_PCC_total Int16 0,01 kW
@@ -2749,11 +2948,11 @@ diff --git a/packages/modules/devices/sofar/sofar/counter.py b/packages/modules/
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/sofar/sofar/inverter.py b/packages/modules/devices/sofar/sofar/inverter.py
---- a/packages/modules/devices/sofar/sofar/inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/sofar/sofar/inverter.py	2026-05-03 10:32:47.451697600 +0200
-@@ -31,8 +31,8 @@
+index 253c06634..9c557be4d 100644
+--- a/packages/modules/devices/sofar/sofar/inverter.py
++++ b/packages/modules/devices/sofar/sofar/inverter.py
+@@ -31,8 +31,8 @@ class SofarInverter(AbstractInverter):
  
      def update(self) -> None:
          # 0x05C4 Power_PV_Total UINT16 in kW accuracy 0,1
@@ -2764,11 +2963,11 @@ diff --git a/packages/modules/devices/sofar/sofar/inverter.py b/packages/modules
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/solakon/solakon_one/bat.py b/packages/modules/devices/solakon/solakon_one/bat.py
---- a/packages/modules/devices/solakon/solakon_one/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/solakon/solakon_one/bat.py	2026-05-03 10:32:47.439697367 +0200
-@@ -34,13 +34,13 @@
+index 933c0bd33..6a3a52c83 100644
+--- a/packages/modules/devices/solakon/solakon_one/bat.py
++++ b/packages/modules/devices/solakon/solakon_one/bat.py
+@@ -34,13 +34,13 @@ class SolakonOneBat(AbstractBat):
  
          # AC Leistung am Stecker, Batterie aus dem Netz aufladen hat positive Werte,
          # Leistung aus der Batterie und/oder aus PV ins Netz abgeben hat negative Werte
@@ -2786,11 +2985,11 @@ diff --git a/packages/modules/devices/solakon/solakon_one/bat.py b/packages/modu
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/solakon/solakon_one/inverter.py b/packages/modules/devices/solakon/solakon_one/inverter.py
---- a/packages/modules/devices/solakon/solakon_one/inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/solakon/solakon_one/inverter.py	2026-05-03 10:32:47.443697445 +0200
-@@ -30,9 +30,9 @@
+index 035fc35e5..0a9c66fdf 100644
+--- a/packages/modules/devices/solakon/solakon_one/inverter.py
++++ b/packages/modules/devices/solakon/solakon_one/inverter.py
+@@ -30,9 +30,9 @@ class SolakonOneInverter(AbstractInverter):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
          # Gesamte DC PV Leistung aller vier MPPT in W
@@ -2802,11 +3001,11 @@ diff --git a/packages/modules/devices/solakon/solakon_one/inverter.py b/packages
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/solaredge/solaredge/bat.py b/packages/modules/devices/solaredge/solaredge/bat.py
---- a/packages/modules/devices/solaredge/solaredge/bat.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/solaredge/solaredge/bat.py	2026-05-03 10:32:47.431697213 +0200
-@@ -4,7 +4,7 @@
+index ec88b4fe9..42db08439 100644
+--- a/packages/modules/devices/solaredge/solaredge/bat.py
++++ b/packages/modules/devices/solaredge/solaredge/bat.py
+@@ -4,7 +4,7 @@ import logging
  from typing import Any, TypedDict, Dict, Union, Optional, Tuple
  
  
@@ -2815,7 +3014,7 @@ diff --git a/packages/modules/devices/solaredge/solaredge/bat.py b/packages/modu
  import pymodbus
  
  
-@@ -99,10 +99,10 @@
+@@ -99,10 +99,10 @@ class SolaredgeBat(AbstractBat):
  
          # Read SoC and Power from the appropriate registers
          soc = self.__tcp_client.read_holding_registers(
@@ -2828,7 +3027,7 @@ diff --git a/packages/modules/devices/solaredge/solaredge/bat.py b/packages/modu
          )
  
          # Handle unsupported case
-@@ -203,7 +203,7 @@
+@@ -203,7 +203,7 @@ class SolaredgeBat(AbstractBat):
              address, data_type = self.REGISTERS[key]
              try:
                  values[key] = self.__tcp_client.read_holding_registers(
@@ -2837,7 +3036,7 @@ diff --git a/packages/modules/devices/solaredge/solaredge/bat.py b/packages/modu
                  )
              except pymodbus.exceptions.ModbusException as e:
                  log.error(f"Failed to read register {key} at address {address}: {e}")
-@@ -217,7 +217,7 @@
+@@ -217,7 +217,7 @@ class SolaredgeBat(AbstractBat):
          for key, value in values_to_write.items():
              address, data_type = self.REGISTERS[key]
              try:
@@ -2846,11 +3045,11 @@ diff --git a/packages/modules/devices/solaredge/solaredge/bat.py b/packages/modu
                  log.debug(f"Neuer Wert {value} in Register {address} geschrieben.")
              except pymodbus.exceptions.ModbusException as e:
                  log.error(f"Failed to write register {key} at address {address}: {e}")
-
 diff --git a/packages/modules/devices/solaredge/solaredge/counter.py b/packages/modules/devices/solaredge/solaredge/counter.py
---- a/packages/modules/devices/solaredge/solaredge/counter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/solaredge/solaredge/counter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -57,7 +57,7 @@
+index 8ae83e2e3..5a6061199 100644
+--- a/packages/modules/devices/solaredge/solaredge/counter.py
++++ b/packages/modules/devices/solaredge/solaredge/counter.py
+@@ -57,7 +57,7 @@ class SolaredgeCounter(AbstractCounter):
              (self.registers.imp_exp_scale, ModbusDataType.INT_16),
          )
          resp = self.__tcp_client.read_holding_registers_bulk(
@@ -2859,11 +3058,11 @@ diff --git a/packages/modules/devices/solaredge/solaredge/counter.py b/packages/
  
          imported = scale_registers(resp[self.registers.imported], resp[self.registers.imp_exp_scale])
          exported = scale_registers(resp[self.registers.exported], resp[self.registers.imp_exp_scale])
-
 diff --git a/packages/modules/devices/solaredge/solaredge/external_inverter.py b/packages/modules/devices/solaredge/solaredge/external_inverter.py
---- a/packages/modules/devices/solaredge/solaredge/external_inverter.py	2026-05-03 09:42:28.283124452 +0200
-+++ b/packages/modules/devices/solaredge/solaredge/external_inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -54,7 +54,7 @@
+index 3fd7deafc..69394b1f2 100644
+--- a/packages/modules/devices/solaredge/solaredge/external_inverter.py
++++ b/packages/modules/devices/solaredge/solaredge/external_inverter.py
+@@ -54,7 +54,7 @@ class SolaredgeExternalInverter(AbstractInverter):
              (self.registers.imp_exp_scale, ModbusDataType.INT_16),
          )
          resp = self.__tcp_client.read_holding_registers_bulk(
@@ -2872,11 +3071,11 @@ diff --git a/packages/modules/devices/solaredge/solaredge/external_inverter.py b
  
          factor = self.component_config.configuration.factor
  
-
 diff --git a/packages/modules/devices/solaredge/solaredge/inverter.py b/packages/modules/devices/solaredge/solaredge/inverter.py
---- a/packages/modules/devices/solaredge/solaredge/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solaredge/solaredge/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -62,7 +62,7 @@
+index 45170cbc7..acb586cc9 100644
+--- a/packages/modules/devices/solaredge/solaredge/inverter.py
++++ b/packages/modules/devices/solaredge/solaredge/inverter.py
+@@ -62,7 +62,7 @@ class SolaredgeInverter(AbstractInverter):
  
      def read_state(self):
          resp = self.__tcp_client.read_holding_registers_bulk(
@@ -2885,11 +3084,11 @@ diff --git a/packages/modules/devices/solaredge/solaredge/inverter.py b/packages
  
          power = scale_registers(resp[Register.POWER], resp[Register.POWER_SCALE]) * -1
          self.peak_filter.check_values(power)
-
 diff --git a/packages/modules/devices/solaredge/solaredge/meter.py b/packages/modules/devices/solaredge/solaredge/meter.py
---- a/packages/modules/devices/solaredge/solaredge/meter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solaredge/solaredge/meter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -31,7 +31,7 @@
+index cd127ddce..26fdb50da 100644
+--- a/packages/modules/devices/solaredge/solaredge/meter.py
++++ b/packages/modules/devices/solaredge/solaredge/meter.py
+@@ -31,7 +31,7 @@ class SolaredgeMeterRegisters:
          # 40205: AC Frequency Scale Factor
          self.frequency = 40204
          self.frequency_scale = 40205
@@ -2898,7 +3097,7 @@ diff --git a/packages/modules/devices/solaredge/solaredge/meter.py b/packages/mo
          # 40225: AC Power Factor Scale Factor
          self.power_factors = 40222
          self.power_factors_scale = 40225
-@@ -96,14 +96,14 @@
+@@ -96,14 +96,14 @@ def _get_synergy_units(component_config: Union[SolaredgeBatSetup,
                                                 SolaredgeExternalInverterSetup],
                         client) -> int:
      if client.read_holding_registers(40121, ModbusDataType.UINT_16,
@@ -2915,10 +3114,10 @@ diff --git a/packages/modules/devices/solaredge/solaredge/meter.py b/packages/mo
          log.debug(
              f"Synergy Units detected for Modbus ID {component_config.configuration.modbus_id}: {synergy_units}")
      else:
-
 diff --git a/packages/modules/devices/solarmax/solarmax/bat.py b/packages/modules/devices/solarmax/solarmax/bat.py
---- a/packages/modules/devices/solarmax/solarmax/bat.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solarmax/solarmax/bat.py	2026-05-03 10:32:47.435697290 +0200
+index 0e39869f4..f15b8dded 100644
+--- a/packages/modules/devices/solarmax/solarmax/bat.py
++++ b/packages/modules/devices/solarmax/solarmax/bat.py
 @@ -2,7 +2,7 @@
  import logging
  from typing import TypedDict, Any, Optional
@@ -2928,7 +3127,7 @@ diff --git a/packages/modules/devices/solarmax/solarmax/bat.py b/packages/module
  from modules.common.abstract_device import AbstractBat
  from modules.common.component_state import BatState
  from modules.common.component_type import ComponentDescriptor
-@@ -37,8 +37,8 @@
+@@ -37,8 +37,8 @@ class SolarmaxBat(AbstractBat):
  
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
@@ -2939,7 +3138,7 @@ diff --git a/packages/modules/devices/solarmax/solarmax/bat.py b/packages/module
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-@@ -57,24 +57,24 @@
+@@ -57,24 +57,24 @@ class SolarmaxBat(AbstractBat):
          if power_limit is None:
              log.debug("Keine Batteriesteuerung, Selbstregelung durch Wechselrichter")
              if self.last_mode is not None:
@@ -2971,10 +3170,10 @@ diff --git a/packages/modules/devices/solarmax/solarmax/bat.py b/packages/module
  
      def power_limit_controllable(self) -> bool:
          return self.component_config.configuration.power_limit_controllable
-
 diff --git a/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py b/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py
---- a/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py	2026-05-03 10:32:47.435697290 +0200
+index 58805fef2..063d844f5 100644
+--- a/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py
++++ b/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -2984,7 +3183,7 @@ diff --git a/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py b/
  from modules.common.abstract_device import AbstractCounter
  from modules.common.component_state import CounterState
  from modules.common.component_type import ComponentDescriptor
-@@ -36,7 +36,7 @@
+@@ -36,7 +36,7 @@ class SolarmaxMsCounter(AbstractCounter):
  
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
@@ -2993,10 +3192,23 @@ diff --git a/packages/modules/devices/solarmax/solarmax/counter_maxstorage.py b/
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
+diff --git a/packages/modules/devices/solarmax/solarmax/inverter.py b/packages/modules/devices/solarmax/solarmax/inverter.py
+index a77c2766f..d7567521d 100644
+--- a/packages/modules/devices/solarmax/solarmax/inverter.py
++++ b/packages/modules/devices/solarmax/solarmax/inverter.py
+@@ -35,7 +35,7 @@ class SolarmaxInverter(AbstractInverter):
+ 
+     def update(self) -> None:
+         power = self.client.read_holding_registers(4151, ModbusDataType.UINT_32,
+-                                                   unit=self.component_config.configuration.modbus_id) * -1
++                                                   device_id=self.component_config.configuration.modbus_id) * -1
+         power = power / 10
+         self.peak_filter.check_values(power)
+         _, exported = self.sim_counter.sim_count(power)
 diff --git a/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py b/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py
---- a/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py	2026-05-03 10:32:47.435697290 +0200
+index d380ade12..b38cf26c2 100644
+--- a/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py
++++ b/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/env python3
  from typing import TypedDict, Any
@@ -3006,7 +3218,7 @@ diff --git a/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py b
  from modules.common.abstract_device import AbstractInverter
  from modules.common.component_state import InverterState
  from modules.common.component_type import ComponentDescriptor
-@@ -36,7 +36,7 @@
+@@ -36,7 +36,7 @@ class SolarmaxMsInverter(AbstractInverter):
  
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
@@ -3015,24 +3227,11 @@ diff --git a/packages/modules/devices/solarmax/solarmax/inverter_maxstorage.py b
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
  
-
-diff --git a/packages/modules/devices/solarmax/solarmax/inverter.py b/packages/modules/devices/solarmax/solarmax/inverter.py
---- a/packages/modules/devices/solarmax/solarmax/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solarmax/solarmax/inverter.py	2026-05-03 10:32:47.435697290 +0200
-@@ -35,7 +35,7 @@
- 
-     def update(self) -> None:
-         power = self.client.read_holding_registers(4151, ModbusDataType.UINT_32,
--                                                   unit=self.component_config.configuration.modbus_id) * -1
-+                                                   device_id=self.component_config.configuration.modbus_id) * -1
-         power = power / 10
-         self.peak_filter.check_values(power)
-         _, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/solax/solax/bat.py b/packages/modules/devices/solax/solax/bat.py
---- a/packages/modules/devices/solax/solax/bat.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solax/solax/bat.py	2026-05-03 10:32:47.467697909 +0200
-@@ -36,8 +36,8 @@
+index c1cd62a37..100465aaf 100644
+--- a/packages/modules/devices/solax/solax/bat.py
++++ b/packages/modules/devices/solax/solax/bat.py
+@@ -36,8 +36,8 @@ class SolaxBat(AbstractBat):
          unit = self.device_config.configuration.modbus_id
  
          # kein Speicher für Versionen G2 und G4
@@ -3043,10 +3242,10 @@ diff --git a/packages/modules/devices/solax/solax/bat.py b/packages/modules/devi
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/solax/solax/counter.py b/packages/modules/devices/solax/solax/counter.py
---- a/packages/modules/devices/solax/solax/counter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solax/solax/counter.py	2026-05-03 10:32:47.467697909 +0200
+index f42f6d2fc..7ce3d1c16 100644
+--- a/packages/modules/devices/solax/solax/counter.py
++++ b/packages/modules/devices/solax/solax/counter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import Any, TypedDict
@@ -3055,7 +3254,7 @@ diff --git a/packages/modules/devices/solax/solax/counter.py b/packages/modules/
  
  from modules.common import modbus
  from modules.common.abstract_device import AbstractCounter
-@@ -37,32 +37,32 @@
+@@ -37,32 +37,32 @@ class SolaxCounter(AbstractCounter):
  
          if SolaxVersion(self.device_config.configuration.version) == SolaxVersion.G2:
              power = self.__tcp_client.read_input_registers(
@@ -3099,10 +3298,10 @@ diff --git a/packages/modules/devices/solax/solax/counter.py b/packages/modules/
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
              imported=imported,
-
 diff --git a/packages/modules/devices/solax/solax/inverter.py b/packages/modules/devices/solax/solax/inverter.py
---- a/packages/modules/devices/solax/solax/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solax/solax/inverter.py	2026-05-03 10:32:47.467697909 +0200
+index b84abce03..5b08e0a56 100644
+--- a/packages/modules/devices/solax/solax/inverter.py
++++ b/packages/modules/devices/solax/solax/inverter.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/env python3
  from typing import Any, TypedDict
@@ -3111,7 +3310,7 @@ diff --git a/packages/modules/devices/solax/solax/inverter.py b/packages/modules
  
  from modules.common import modbus
  from modules.common.abstract_device import AbstractInverter
-@@ -36,19 +36,19 @@
+@@ -36,19 +36,19 @@ class SolaxInverter(AbstractInverter):
          unit = self.device_config.configuration.modbus_id
  
          if SolaxVersion(self.device_config.configuration.version) == SolaxVersion.G2:
@@ -3137,11 +3336,11 @@ diff --git a/packages/modules/devices/solax/solax/inverter.py b/packages/modules
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/solis/solis/bat.py b/packages/modules/devices/solis/solis/bat.py
---- a/packages/modules/devices/solis/solis/bat.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solis/solis/bat.py	2026-05-03 10:32:47.423697058 +0200
-@@ -33,12 +33,12 @@
+index 490fc6a8f..5229a634d 100644
+--- a/packages/modules/devices/solis/solis/bat.py
++++ b/packages/modules/devices/solis/solis/bat.py
+@@ -33,12 +33,12 @@ class SolisBat(AbstractBat):
      def update(self) -> None:
          unit = self.component_config.configuration.modbus_id
  
@@ -3158,11 +3357,11 @@ diff --git a/packages/modules/devices/solis/solis/bat.py b/packages/modules/devi
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/solis/solis/counter.py b/packages/modules/devices/solis/solis/counter.py
---- a/packages/modules/devices/solis/solis/counter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solis/solis/counter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -37,11 +37,11 @@
+index e5a17bf55..cce9b6942 100644
+--- a/packages/modules/devices/solis/solis/counter.py
++++ b/packages/modules/devices/solis/solis/counter.py
+@@ -37,11 +37,11 @@ class SolisCounter:
          if self.version == SolisVersion.inverter:
              register_offset = -1
  
@@ -3179,11 +3378,11 @@ diff --git a/packages/modules/devices/solis/solis/counter.py b/packages/modules/
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/devices/solis/solis/inverter.py b/packages/modules/devices/solis/solis/inverter.py
---- a/packages/modules/devices/solis/solis/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/solis/solis/inverter.py	2026-05-03 10:32:47.423697058 +0200
-@@ -33,11 +33,11 @@
+index 749829a57..0d9523435 100644
+--- a/packages/modules/devices/solis/solis/inverter.py
++++ b/packages/modules/devices/solis/solis/inverter.py
+@@ -33,11 +33,11 @@ class SolisInverter:
          unit = self.component_config.configuration.modbus_id
  
          if self.version == SolisVersion.inverter:
@@ -3199,11 +3398,11 @@ diff --git a/packages/modules/devices/solis/solis/inverter.py b/packages/modules
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/studer/studer/bat.py b/packages/modules/devices/studer/studer/bat.py
---- a/packages/modules/devices/studer/studer/bat.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/studer/studer/bat.py	2026-05-03 10:32:47.431697213 +0200
-@@ -32,10 +32,10 @@
+index a49cf4e1a..0bf9f5ccc 100644
+--- a/packages/modules/devices/studer/studer/bat.py
++++ b/packages/modules/devices/studer/studer/bat.py
+@@ -32,10 +32,10 @@ class StuderBat(AbstractBat):
          unit = self.component_config.configuration.modbus_id
  
          with self.__tcp_client:
@@ -3218,11 +3417,11 @@ diff --git a/packages/modules/devices/studer/studer/bat.py b/packages/modules/de
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          bat_state = BatState(
-
 diff --git a/packages/modules/devices/studer/studer/inverter.py b/packages/modules/devices/studer/studer/inverter.py
---- a/packages/modules/devices/studer/studer/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/studer/studer/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -43,7 +43,7 @@
+index 131b9f0a9..fa0699ff4 100644
+--- a/packages/modules/devices/studer/studer/inverter.py
++++ b/packages/modules/devices/studer/studer/inverter.py
+@@ -43,7 +43,7 @@ class StuderInverter(AbstractInverter):
              power = 0
              for i in range(1, vc_count+1):
                  mb_unit_dev = mb_unit+i
@@ -3231,7 +3430,7 @@ diff --git a/packages/modules/devices/studer/studer/inverter.py b/packages/modul
              power = power * -1000
  
              if vc_type == 'VS':
-@@ -54,7 +54,7 @@
+@@ -54,7 +54,7 @@ class StuderInverter(AbstractInverter):
              for i in range(1, vc_count + 1):
                  mb_unit_dev = mb_unit + i
                  exported += self.__tcp_client.read_input_registers(mb_register, ModbusDataType.FLOAT_32,
@@ -3240,11 +3439,11 @@ diff --git a/packages/modules/devices/studer/studer/inverter.py b/packages/modul
              exported = exported * 1000000
  
          _, exported = self.peak_filter.check_values(power, None, exported)
-
 diff --git a/packages/modules/devices/sungrow/sungrow_ihm/bat.py b/packages/modules/devices/sungrow/sungrow_ihm/bat.py
---- a/packages/modules/devices/sungrow/sungrow_ihm/bat.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_ihm/bat.py	2026-05-03 10:32:47.431697213 +0200
-@@ -37,10 +37,10 @@
+index 2aa86da15..85f9196ef 100644
+--- a/packages/modules/devices/sungrow/sungrow_ihm/bat.py
++++ b/packages/modules/devices/sungrow/sungrow_ihm/bat.py
+@@ -37,10 +37,10 @@ class SungrowIHMBat(AbstractBat):
  
      def update(self) -> None:
          unit = self.device_config.configuration.modbus_id
@@ -3257,7 +3456,7 @@ diff --git a/packages/modules/devices/sungrow/sungrow_ihm/bat.py b/packages/modu
  
          self.peak_filter.check_values(bat_power)
          imported, exported = self.sim_counter.sim_count(bat_power)
-@@ -59,35 +59,35 @@
+@@ -59,35 +59,35 @@ class SungrowIHMBat(AbstractBat):
          if power_limit is None:
              log.debug("Keine Batteriesteuerung, Selbstregelung durch Wechselrichter")
              if self.last_mode is not None:
@@ -3303,11 +3502,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_ihm/bat.py b/packages/modu
  
      def power_limit_controllable(self) -> bool:
          return True
-
 diff --git a/packages/modules/devices/sungrow/sungrow_ihm/counter.py b/packages/modules/devices/sungrow/sungrow_ihm/counter.py
---- a/packages/modules/devices/sungrow/sungrow_ihm/counter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_ihm/counter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -34,15 +34,15 @@
+index 7a2289dad..2d5e74755 100644
+--- a/packages/modules/devices/sungrow/sungrow_ihm/counter.py
++++ b/packages/modules/devices/sungrow/sungrow_ihm/counter.py
+@@ -34,15 +34,15 @@ class SungrowIHMCounter(AbstractCounter):
      def update(self):
          unit = self.device_config.configuration.modbus_id
          power = self.__tcp_client.read_input_registers(8156, ModbusDataType.INT_32,
@@ -3327,11 +3526,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_ihm/counter.py b/packages/
  
          voltages = [value / 10 for value in voltages]
  
-
 diff --git a/packages/modules/devices/sungrow/sungrow_ihm/inverter.py b/packages/modules/devices/sungrow/sungrow_ihm/inverter.py
---- a/packages/modules/devices/sungrow/sungrow_ihm/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_ihm/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -35,7 +35,7 @@
+index 2b12ad5cd..c898b4507 100644
+--- a/packages/modules/devices/sungrow/sungrow_ihm/inverter.py
++++ b/packages/modules/devices/sungrow/sungrow_ihm/inverter.py
+@@ -35,7 +35,7 @@ class SungrowIHMInverter(AbstractInverter):
          unit = self.device_config.configuration.modbus_id
  
          power = self.__tcp_client.read_input_registers(8154, ModbusDataType.INT_32,
@@ -3340,11 +3539,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_ihm/inverter.py b/packages
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/sungrow/sungrow_micro/inverter.py b/packages/modules/devices/sungrow/sungrow_micro/inverter.py
---- a/packages/modules/devices/sungrow/sungrow_micro/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_micro/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -35,7 +35,7 @@
+index b189c73f7..363b40e70 100644
+--- a/packages/modules/devices/sungrow/sungrow_micro/inverter.py
++++ b/packages/modules/devices/sungrow/sungrow_micro/inverter.py
+@@ -35,7 +35,7 @@ class SungrowMicroInverter(AbstractInverter):
          unit = self.device_config.configuration.modbus_id
  
          power = self.__tcp_client.read_input_registers(32213, ModbusDataType.UINT_32,
@@ -3353,11 +3552,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_micro/inverter.py b/packag
  
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/sungrow/sungrow_sg/counter.py b/packages/modules/devices/sungrow/sungrow_sg/counter.py
---- a/packages/modules/devices/sungrow/sungrow_sg/counter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_sg/counter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -37,21 +37,21 @@
+index e03c58110..4dc838d50 100644
+--- a/packages/modules/devices/sungrow/sungrow_sg/counter.py
++++ b/packages/modules/devices/sungrow/sungrow_sg/counter.py
+@@ -37,21 +37,21 @@ class SungrowSGCounter(AbstractCounter):
      def update(self):
          unit = self.device_config.configuration.modbus_id
          power = self.__tcp_client.read_input_registers(5082, ModbusDataType.INT_32,
@@ -3384,11 +3583,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sg/counter.py b/packages/m
  
          voltages = [value / 10 for value in voltages]
  
-
 diff --git a/packages/modules/devices/sungrow/sungrow_sg/inverter.py b/packages/modules/devices/sungrow/sungrow_sg/inverter.py
---- a/packages/modules/devices/sungrow/sungrow_sg/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_sg/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -35,11 +35,11 @@
+index 33e479f9d..d52ef8f6e 100644
+--- a/packages/modules/devices/sungrow/sungrow_sg/inverter.py
++++ b/packages/modules/devices/sungrow/sungrow_sg/inverter.py
+@@ -35,11 +35,11 @@ class SungrowSGInverter(AbstractInverter):
          unit = self.device_config.configuration.modbus_id
  
          power = self.__tcp_client.read_input_registers(5030, ModbusDataType.INT_32,
@@ -3403,11 +3602,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sg/inverter.py b/packages/
  
          currents = [value * -0.1 for value in currents]
  
-
 diff --git a/packages/modules/devices/sungrow/sungrow_sh/bat.py b/packages/modules/devices/sungrow/sungrow_sh/bat.py
---- a/packages/modules/devices/sungrow/sungrow_sh/bat.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_sh/bat.py	2026-05-03 10:32:47.431697213 +0200
-@@ -43,19 +43,19 @@
+index c04eaefdd..737fed9be 100644
+--- a/packages/modules/devices/sungrow/sungrow_sh/bat.py
++++ b/packages/modules/devices/sungrow/sungrow_sh/bat.py
+@@ -43,19 +43,19 @@ class SungrowSHBat(AbstractBat):
  
          try:
              self.__tcp_client.read_input_registers(5213, ModbusDataType.INT_32,
@@ -3431,7 +3630,7 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sh/bat.py b/packages/modul
                  # if battery power is not zero and register 13000 shows status bits, old registers are used
                  log.debug("Battery register check: using old_registers (13021 + 13000 bits for sign).")
                  return RegMode.OLD_REGISTERS
-@@ -67,20 +67,20 @@
+@@ -67,20 +67,20 @@ class SungrowSHBat(AbstractBat):
  
      def update(self) -> None:
          unit = self.device_config.configuration.modbus_id
@@ -3458,7 +3657,7 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sh/bat.py b/packages/modul
              running_state = resp.registers[0]
              is_charging = (running_state & 0x02) != 0
              is_discharging = (running_state & 0x04) != 0
-@@ -92,13 +92,13 @@
+@@ -92,13 +92,13 @@ class SungrowSHBat(AbstractBat):
  
          # === Mode 3: fallback ===
          else:
@@ -3476,7 +3675,7 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sh/bat.py b/packages/modul
  
              if total_power > pv_power:
                  bat_power = -abs(bat_power)
-@@ -125,35 +125,35 @@
+@@ -125,35 +125,35 @@ class SungrowSHBat(AbstractBat):
          if power_limit is None:
              log.debug("Keine Batteriesteuerung, Selbstregelung durch Wechselrichter")
              if self.last_mode is not None:
@@ -3522,11 +3721,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sh/bat.py b/packages/modul
  
      def power_limit_controllable(self) -> bool:
          return True
-
 diff --git a/packages/modules/devices/sungrow/sungrow_sh/counter.py b/packages/modules/devices/sungrow/sungrow_sh/counter.py
---- a/packages/modules/devices/sungrow/sungrow_sh/counter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_sh/counter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -38,29 +38,29 @@
+index f7b37254a..871a54ea6 100644
+--- a/packages/modules/devices/sungrow/sungrow_sh/counter.py
++++ b/packages/modules/devices/sungrow/sungrow_sh/counter.py
+@@ -38,29 +38,29 @@ class SungrowSHCounter(AbstractCounter):
      def update(self):
          unit = self.device_config.configuration.modbus_id
          power = self.__tcp_client.read_input_registers(13009, ModbusDataType.INT_32,
@@ -3562,11 +3761,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sh/counter.py b/packages/m
  
          voltages = [value / 10 for value in voltages]
  
-
 diff --git a/packages/modules/devices/sungrow/sungrow_sh/inverter.py b/packages/modules/devices/sungrow/sungrow_sh/inverter.py
---- a/packages/modules/devices/sungrow/sungrow_sh/inverter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/sungrow/sungrow_sh/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -35,11 +35,11 @@
+index fcb56c56a..7004361bc 100644
+--- a/packages/modules/devices/sungrow/sungrow_sh/inverter.py
++++ b/packages/modules/devices/sungrow/sungrow_sh/inverter.py
+@@ -35,11 +35,11 @@ class SungrowSHInverter(AbstractInverter):
          unit = self.device_config.configuration.modbus_id
  
          power = self.__tcp_client.read_input_registers(13033, ModbusDataType.INT_32,
@@ -3581,11 +3780,11 @@ diff --git a/packages/modules/devices/sungrow/sungrow_sh/inverter.py b/packages/
  
          currents = [value * -0.1 for value in currents]
  
-
 diff --git a/packages/modules/devices/thermia/thermia/counter.py b/packages/modules/devices/thermia/thermia/counter.py
---- a/packages/modules/devices/thermia/thermia/counter.py	2026-05-03 09:42:28.287124557 +0200
-+++ b/packages/modules/devices/thermia/thermia/counter.py	2026-05-03 10:32:47.435697290 +0200
-@@ -8,7 +8,7 @@
+index 47dbf6cc5..3488502ee 100644
+--- a/packages/modules/devices/thermia/thermia/counter.py
++++ b/packages/modules/devices/thermia/thermia/counter.py
+@@ -8,7 +8,7 @@ from modules.common.modbus import ModbusDataType, ModbusTcpClient_
  from modules.common.simcount import SimCounter
  from modules.common.store import get_counter_value_store
  from modules.devices.thermia.thermia.config import ThermiaCounterSetup
@@ -3594,7 +3793,7 @@ diff --git a/packages/modules/devices/thermia/thermia/counter.py b/packages/modu
  from modules.common.utils.peak_filter import PeakFilter
  from modules.common.component_type import ComponentType
  
-@@ -36,15 +36,15 @@
+@@ -36,15 +36,15 @@ class ThermiaCounter(AbstractCounter):
      def update(self):
          with self.client:
              voltages = [val / 100 for val in self.client.read_input_registers(
@@ -3614,11 +3813,11 @@ diff --git a/packages/modules/devices/thermia/thermia/counter.py b/packages/modu
              exported = 0
  
          imported, _ = self.peak_filter.check_values(power, imported, None)
-
 diff --git a/packages/modules/devices/upower/upower/bat.py b/packages/modules/devices/upower/upower/bat.py
---- a/packages/modules/devices/upower/upower/bat.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/upower/upower/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -33,19 +33,19 @@
+index 304cbf7bd..1af2ee4c1 100644
+--- a/packages/modules/devices/upower/upower/bat.py
++++ b/packages/modules/devices/upower/upower/bat.py
+@@ -33,19 +33,19 @@ class UPowerBat(AbstractBat):
  
      def update(self) -> None:
          if self.version == UPowerVersion.GEN_1:
@@ -3644,11 +3843,11 @@ diff --git a/packages/modules/devices/upower/upower/bat.py b/packages/modules/de
              self.peak_filter.check_values(power)
              imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/upower/upower/counter.py b/packages/modules/devices/upower/upower/counter.py
---- a/packages/modules/devices/upower/upower/counter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/upower/upower/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -33,21 +33,21 @@
+index 818b62f50..de4ad21b8 100644
+--- a/packages/modules/devices/upower/upower/counter.py
++++ b/packages/modules/devices/upower/upower/counter.py
+@@ -33,21 +33,21 @@ class UPowerCounter(AbstractCounter):
  
      def update(self):
          if self.version == UPowerVersion.GEN_1:
@@ -3678,11 +3877,11 @@ diff --git a/packages/modules/devices/upower/upower/counter.py b/packages/module
              )]
              self.peak_filter.check_values(power)
              imported, exported = self.sim_counter.sim_count(power)
-
 diff --git a/packages/modules/devices/upower/upower/inverter.py b/packages/modules/devices/upower/upower/inverter.py
---- a/packages/modules/devices/upower/upower/inverter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/upower/upower/inverter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -30,11 +30,11 @@
+index d09ef2fa9..99797c29c 100644
+--- a/packages/modules/devices/upower/upower/inverter.py
++++ b/packages/modules/devices/upower/upower/inverter.py
+@@ -30,11 +30,11 @@ class UPowerInverter(AbstractInverter):
  
      def update(self) -> None:
          if self.version == UPowerVersion.GEN_1:
@@ -3698,11 +3897,11 @@ diff --git a/packages/modules/devices/upower/upower/inverter.py b/packages/modul
  
          _, exported = self.peak_filter.check_values(power, None, exported)
          inverter_state = InverterState(
-
 diff --git a/packages/modules/devices/varta/varta/bat_modbus.py b/packages/modules/devices/varta/varta/bat_modbus.py
---- a/packages/modules/devices/varta/varta/bat_modbus.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/varta/varta/bat_modbus.py	2026-05-03 10:32:47.431697213 +0200
-@@ -37,8 +37,8 @@
+index 2ac4cab32..e0cd063f0 100644
+--- a/packages/modules/devices/varta/varta/bat_modbus.py
++++ b/packages/modules/devices/varta/varta/bat_modbus.py
+@@ -37,8 +37,8 @@ class VartaBatModbus(AbstractBat):
          self.set_state(self.get_state())
  
      def get_state(self) -> BatState:
@@ -3713,11 +3912,11 @@ diff --git a/packages/modules/devices/varta/varta/bat_modbus.py b/packages/modul
          self.peak_filter.check_values(power)
          return BatState(
              power=power,
-
 diff --git a/packages/modules/devices/varta/varta/counter.py b/packages/modules/devices/varta/varta/counter.py
---- a/packages/modules/devices/varta/varta/counter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/varta/varta/counter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -34,7 +34,7 @@
+index 3dd321010..68e801a30 100644
+--- a/packages/modules/devices/varta/varta/counter.py
++++ b/packages/modules/devices/varta/varta/counter.py
+@@ -34,7 +34,7 @@ class VartaCounter(AbstractCounter):
          self.peak_filter = PeakFilter(ComponentType.COUNTER, self.component_config.id, self.fault_state)
  
      def update(self):
@@ -3726,11 +3925,11 @@ diff --git a/packages/modules/devices/varta/varta/counter.py b/packages/modules/
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/varta/varta/inverter.py b/packages/modules/devices/varta/varta/inverter.py
---- a/packages/modules/devices/varta/varta/inverter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/varta/varta/inverter.py	2026-05-03 10:32:47.431697213 +0200
-@@ -33,7 +33,7 @@
+index 5bba140ea..adeb54b67 100644
+--- a/packages/modules/devices/varta/varta/inverter.py
++++ b/packages/modules/devices/varta/varta/inverter.py
+@@ -33,7 +33,7 @@ class VartaInverter:
          self.peak_filter = PeakFilter(ComponentType.INVERTER, self.component_config.id, self.fault_state)
  
      def update(self):
@@ -3739,11 +3938,11 @@ diff --git a/packages/modules/devices/varta/varta/inverter.py b/packages/modules
          self.peak_filter.check_values(power)
          _, exported = self.sim_counter.sim_count(power)
  
-
 diff --git a/packages/modules/devices/victron/victron/bat.py b/packages/modules/devices/victron/victron/bat.py
---- a/packages/modules/devices/victron/victron/bat.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/victron/victron/bat.py	2026-05-03 10:32:47.459697754 +0200
-@@ -41,8 +41,8 @@
+index f49dfc4f4..1304b3cab 100644
+--- a/packages/modules/devices/victron/victron/bat.py
++++ b/packages/modules/devices/victron/victron/bat.py
+@@ -41,8 +41,8 @@ class VictronBat(AbstractBat):
      def update(self) -> None:
          modbus_id = self.component_config.configuration.modbus_id
          with self.__tcp_client:
@@ -3754,7 +3953,7 @@ diff --git a/packages/modules/devices/victron/victron/bat.py b/packages/modules/
          self.peak_filter.check_values(power)
          imported, exported = self.sim_counter.sim_count(power)
          bat_state = BatState(
-@@ -57,7 +57,7 @@
+@@ -57,7 +57,7 @@ class VictronBat(AbstractBat):
      def set_power_limit(self, power_limit: Optional[int]) -> None:
          modbus_id = self.component_config.configuration.modbus_id
          # Wenn Victron Dynamic ESS aktiv, erfolgt keine weitere Regelung in openWB
@@ -3763,7 +3962,7 @@ diff --git a/packages/modules/devices/victron/victron/bat.py b/packages/modules/
          if dynamic_ess_mode == 1:
              log.debug("Dynamic ESS Mode ist aktiv, daher erfolgt keine Regelung des Speichers durch openWB")
              return
-@@ -66,18 +66,18 @@
+@@ -66,18 +66,18 @@ class VictronBat(AbstractBat):
              log.debug("Keine Batteriesteuerung, Selbstregelung durch Wechselrichter")
              if self.last_mode is not None:
                  # ESS Mode 2 und Leistung EVU auf 0kW setzen für Selbstregelung
@@ -3788,7 +3987,7 @@ diff --git a/packages/modules/devices/victron/victron/bat.py b/packages/modules/
                  self.last_mode = 'stop'
          elif power_limit < 0:
              evu_power = data.data.counter_all_data.get_evu_counter().data.get.power
-@@ -87,14 +87,14 @@
+@@ -87,14 +87,14 @@ class VictronBat(AbstractBat):
                        f"Aktuelle Speicherleistung: {self.current_power} W, EVU-Leistung: {evu_power} W "
                        f"EVU-Leistung um {power_limit - self.current_power} W anpassen auf {set_power} W")
              if self.last_mode != 'discharge':
@@ -3806,7 +4005,7 @@ diff --git a/packages/modules/devices/victron/victron/bat.py b/packages/modules/
          elif power_limit > 0:
              evu_power = data.data.counter_all_data.get_evu_counter().data.get.power
              set_power = (power_limit - self.current_power) + evu_power
-@@ -103,11 +103,11 @@
+@@ -103,11 +103,11 @@ class VictronBat(AbstractBat):
                        f"Aktuelle Speicherleistung: {self.current_power} W, EVU-Leistung: {evu_power} W "
                        f"EVU-Leistung um {power_limit - self.current_power} W anpassen auf {set_power} W")
              if self.last_mode != 'charge':
@@ -3821,11 +4020,11 @@ diff --git a/packages/modules/devices/victron/victron/bat.py b/packages/modules/
  
      def power_limit_controllable(self) -> bool:
          return True
-
 diff --git a/packages/modules/devices/victron/victron/counter.py b/packages/modules/devices/victron/victron/counter.py
---- a/packages/modules/devices/victron/victron/counter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/victron/victron/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -37,16 +37,16 @@
+index 11da27e6c..f67b64743 100644
+--- a/packages/modules/devices/victron/victron/counter.py
++++ b/packages/modules/devices/victron/victron/counter.py
+@@ -37,16 +37,16 @@ class VictronCounter(AbstractCounter):
          energy_meter = self.component_config.configuration.energy_meter
          with self.__tcp_client:
              if energy_meter:
@@ -3846,11 +4045,11 @@ diff --git a/packages/modules/devices/victron/victron/counter.py b/packages/modu
                  power = sum(powers)
  
          self.peak_filter.check_values(power)
-
 diff --git a/packages/modules/devices/victron/victron/inverter.py b/packages/modules/devices/victron/victron/inverter.py
---- a/packages/modules/devices/victron/victron/inverter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/victron/victron/inverter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -40,7 +40,7 @@
+index 2b11b17f8..778b2211e 100644
+--- a/packages/modules/devices/victron/victron/inverter.py
++++ b/packages/modules/devices/victron/victron/inverter.py
+@@ -40,7 +40,7 @@ class VictronInverter(AbstractInverter):
          with self.__tcp_client:
              if self.component_config.configuration.mppt:
                  try:
@@ -3859,7 +4058,7 @@ diff --git a/packages/modules/devices/victron/victron/inverter.py b/packages/mod
                  except Exception as e:
                      if "GatewayPathUnavailable" in str(e):
                          power = 0
-@@ -52,8 +52,8 @@
+@@ -52,8 +52,8 @@ class VictronInverter(AbstractInverter):
                  # Adresse 808-810 ac output connected pv
                  # Adresse 811-813 ac input connected pv
                  # Adresse 850 mppt Leistung
@@ -3870,11 +4069,11 @@ diff --git a/packages/modules/devices/victron/victron/inverter.py b/packages/mod
                  power = (sum(power_temp1)+power_temp2) * -1
  
          self.peak_filter.check_values(power)
-
 diff --git a/packages/modules/devices/victron/victron_3p75ct/counter.py b/packages/modules/devices/victron/victron_3p75ct/counter.py
---- a/packages/modules/devices/victron/victron_3p75ct/counter.py	2026-05-03 09:42:28.291124662 +0200
-+++ b/packages/modules/devices/victron/victron_3p75ct/counter.py	2026-05-03 10:32:47.459697754 +0200
-@@ -33,22 +33,22 @@
+index fb7e07402..1c63b0339 100644
+--- a/packages/modules/devices/victron/victron_3p75ct/counter.py
++++ b/packages/modules/devices/victron/victron_3p75ct/counter.py
+@@ -33,22 +33,22 @@ class VictronCounter(AbstractCounter):
          unit = 1  # Modbus ID ist immer 1 da Standalone Produkt
          with self.__udp_client:
              powers = [
@@ -3904,11 +4103,11 @@ diff --git a/packages/modules/devices/victron/victron_3p75ct/counter.py b/packag
  
          imported, exported = self.peak_filter.check_values(power, imported, exported)
          counter_state = CounterState(
-
 diff --git a/packages/modules/io_devices/dimm_kit/api.py b/packages/modules/io_devices/dimm_kit/api.py
---- a/packages/modules/io_devices/dimm_kit/api.py	2026-05-03 09:42:28.323125503 +0200
-+++ b/packages/modules/io_devices/dimm_kit/api.py	2026-05-03 10:32:47.471697986 +0200
-@@ -44,13 +44,13 @@
+index 76ed494b4..ce59b950c 100644
+--- a/packages/modules/io_devices/dimm_kit/api.py
++++ b/packages/modules/io_devices/dimm_kit/api.py
+@@ -44,13 +44,13 @@ def create_io(config: IoLan):
          # analog inputs are configured as 0-5V (AI1-AI4) and 0-25mA (AI5-AI8) as default
          # the values are reported as integers in range of 0-1024
          time.sleep(0.1)
@@ -3925,7 +4124,7 @@ diff --git a/packages/modules/io_devices/dimm_kit/api.py b/packages/modules/io_d
          digital_output = {
              getattr(DigitalOutputMapping, f'DO{pin+1}').name: digital_output_read[pin] for pin in range(8)}
          return IoState(
-@@ -63,13 +63,13 @@
+@@ -63,13 +63,13 @@ def create_io(config: IoLan):
          nonlocal client
          for i, value in digital_output.items():
              client.write_single_coil(DigitalOutputMapping[i].value, 1 if value is True else 0,
@@ -3941,11 +4140,11 @@ diff --git a/packages/modules/io_devices/dimm_kit/api.py b/packages/modules/io_d
      return ConfigurableIo(config=config, component_reader=read, component_writer=write, initializer=initializer)
  
  
-
 diff --git a/packages/modules/smarthome/acthor/watt.py b/packages/modules/smarthome/acthor/watt.py
---- a/packages/modules/smarthome/acthor/watt.py	2026-05-03 09:42:28.499130125 +0200
-+++ b/packages/modules/smarthome/acthor/watt.py	2026-05-03 10:37:43.541239052 +0200
-@@ -4,7 +4,7 @@
+index ec32becc8..418763649 100644
+--- a/packages/modules/smarthome/acthor/watt.py
++++ b/packages/modules/smarthome/acthor/watt.py
+@@ -4,7 +4,7 @@ import os
  import struct
  import codecs
  import logging
@@ -3954,7 +4153,7 @@ diff --git a/packages/modules/smarthome/acthor/watt.py b/packages/modules/smarth
  from smarthome.smartret import writeret
  
  log = logging.getLogger("acthor")
-@@ -72,10 +72,10 @@
+@@ -72,10 +72,10 @@ powerc = 0
  client = ModbusTcpClient(ipadr, port=502)
  #
  start = 1000
@@ -3967,7 +4166,7 @@ diff --git a/packages/modules/smarthome/acthor/watt.py b/packages/modules/smarth
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-@@ -163,7 +163,7 @@
+@@ -163,7 +163,7 @@ if count5 == 0:
                   (devicenumber, ipadr, atype, instpower, faktor))
      # modbus write
      if modbuswrite == 1:
@@ -3976,11 +4175,11 @@ diff --git a/packages/modules/smarthome/acthor/watt.py b/packages/modules/smarth
          if count1 < 3:
              log.info("watt devicenr %d ipadr %s device written by modbus " %
                       (devicenumber, ipadr))
-
 diff --git a/packages/modules/smarthome/askoheat/watt.py b/packages/modules/smarthome/askoheat/watt.py
---- a/packages/modules/smarthome/askoheat/watt.py	2026-05-03 09:42:28.499130125 +0200
-+++ b/packages/modules/smarthome/askoheat/watt.py	2026-05-03 10:37:43.545239125 +0200
-@@ -3,7 +3,7 @@
+index 6733ae897..576c9d498 100644
+--- a/packages/modules/smarthome/askoheat/watt.py
++++ b/packages/modules/smarthome/askoheat/watt.py
+@@ -3,7 +3,7 @@ import sys
  import os
  import struct
  import codecs
@@ -3989,7 +4188,7 @@ diff --git a/packages/modules/smarthome/askoheat/watt.py b/packages/modules/smar
  import logging
  from smarthome.smartlog import initlog
  from smarthome.smartret import writeret
-@@ -32,7 +32,7 @@
+@@ -32,7 +32,7 @@ client = ModbusTcpClient(ipadr, port=502)
  start = 110
  # test
  # start = 3522
@@ -3998,7 +4197,7 @@ diff --git a/packages/modules/smarthome/askoheat/watt.py b/packages/modules/smar
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-@@ -40,7 +40,7 @@
+@@ -40,7 +40,7 @@ aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
  start = 638
  #  test
  # start = 3522
@@ -4007,7 +4206,7 @@ diff --git a/packages/modules/smarthome/askoheat/watt.py b/packages/modules/smar
  value1 = resp.registers[0]
  all = format(value1, '04x')
  temp0 = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-@@ -95,7 +95,7 @@
+@@ -95,7 +95,7 @@ if count5 == 0:
                   (devicenumber, ipadr, neupower, pvmodus, modbuswrite))
      # modbus write
      if modbuswrite == 1:
@@ -4016,11 +4215,11 @@ diff --git a/packages/modules/smarthome/askoheat/watt.py b/packages/modules/smar
          if count1 < 3:
              log.info("watt devicenr %d ipadr %s device written by modbus " %
                       (devicenumber, ipadr))
-
 diff --git a/packages/modules/smarthome/elwa/watt.py b/packages/modules/smarthome/elwa/watt.py
---- a/packages/modules/smarthome/elwa/watt.py	2026-05-03 09:42:28.499130125 +0200
-+++ b/packages/modules/smarthome/elwa/watt.py	2026-05-03 10:37:43.541239052 +0200
-@@ -3,7 +3,7 @@
+index 4bfcc4041..7b5d413c8 100644
+--- a/packages/modules/smarthome/elwa/watt.py
++++ b/packages/modules/smarthome/elwa/watt.py
+@@ -3,7 +3,7 @@ import sys
  import os
  import struct
  import codecs
@@ -4029,7 +4228,7 @@ diff --git a/packages/modules/smarthome/elwa/watt.py b/packages/modules/smarthom
  import logging
  from smarthome.smartret import writeret
  
-@@ -31,9 +31,9 @@
+@@ -31,9 +31,9 @@ if os.path.isfile(file_stringpv):
  client = ModbusTcpClient(ipadr, port=502)
  # Test only
  # # start = 3524
@@ -4041,7 +4240,7 @@ diff --git a/packages/modules/smarthome/elwa/watt.py b/packages/modules/smarthom
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-@@ -127,7 +127,7 @@
+@@ -127,7 +127,7 @@ if count5 == 0:
                   (devicenumber, ipadr, neupower, pvmodus, modbuswrite))
      # modbus write
      if modbuswrite == 1:
@@ -4050,11 +4249,11 @@ diff --git a/packages/modules/smarthome/elwa/watt.py b/packages/modules/smarthom
          if count1 < 3:
              log.info("watt devicenr %d ipadr %s device written by modbus " %
                       (devicenumber, ipadr))
-
 diff --git a/packages/modules/smarthome/idm/watt.py b/packages/modules/smarthome/idm/watt.py
---- a/packages/modules/smarthome/idm/watt.py	2026-05-03 09:42:28.499130125 +0200
-+++ b/packages/modules/smarthome/idm/watt.py	2026-05-03 10:38:32.790133057 +0200
-@@ -3,9 +3,9 @@
+index bb4a1c8a0..b61d4fe2e 100644
+--- a/packages/modules/smarthome/idm/watt.py
++++ b/packages/modules/smarthome/idm/watt.py
+@@ -3,9 +3,9 @@ import sys
  import os
  import struct
  import logging
@@ -4067,7 +4266,7 @@ diff --git a/packages/modules/smarthome/idm/watt.py b/packages/modules/smarthome
  from smarthome.smartlog import initlog
  from smarthome.smartret import writeret
  devicenumber = int(sys.argv[1])
-@@ -47,10 +47,10 @@
+@@ -47,10 +47,10 @@ client = ModbusTcpClient(ipadr, port=502)
  #  prod
  start = 4122
  if navvers == "2":
@@ -4081,7 +4280,7 @@ diff --git a/packages/modules/smarthome/idm/watt.py b/packages/modules/smarthome
  lkw = float(struct.unpack('>f', raw)[0])
  aktpower = int(lkw*1000)
  modbuswrite = 0
-@@ -124,11 +124,11 @@
+@@ -124,11 +124,11 @@ if count5 == 0:
                   % (devicenumber, ipadr, neupower, pvmodus, modbuswrite))
      # modbus write
      if modbuswrite == 1:
@@ -4095,20 +4294,20 @@ diff --git a/packages/modules/smarthome/idm/watt.py b/packages/modules/smarthome
  else:
      if pvmodus == 99:
          pvmodus = 0
-
 diff --git a/packages/modules/smarthome/lambda_/off.py b/packages/modules/smarthome/lambda_/off.py
---- a/packages/modules/smarthome/lambda_/off.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/lambda_/off.py	2026-05-03 10:37:43.541239052 +0200
-@@ -5,7 +5,7 @@
+index 526317742..fe3bf75e7 100644
+--- a/packages/modules/smarthome/lambda_/off.py
++++ b/packages/modules/smarthome/lambda_/off.py
+@@ -5,7 +5,7 @@ import struct
  import codecs
  import logging
  from smarthome.smartlog import initlog
 -from pymodbus.client.sync import ModbusTcpClient
 +from pymodbus.client import ModbusTcpClient
- bp = '/var/www/html/b/ramdisk/smarthome_device_'
+ bp = '/var/www/html/openWB/ramdisk/smarthome_device_'
  devicenumber = int(sys.argv[1])
  ipadr = str(sys.argv[2])
-@@ -22,7 +22,7 @@
+@@ -22,7 +22,7 @@ log.info(' off.py devicenr %d ipadr %s ueberschuss %6d try to connect (modbus)'
           % (devicenumber, ipadr, uberschuss))
  client = ModbusTcpClient(ipadr, port=502)
  start = 103
@@ -4117,20 +4316,20 @@ diff --git a/packages/modules/smarthome/lambda_/off.py b/packages/modules/smarth
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-
 diff --git a/packages/modules/smarthome/lambda_/on.py b/packages/modules/smarthome/lambda_/on.py
---- a/packages/modules/smarthome/lambda_/on.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/lambda_/on.py	2026-05-03 10:37:43.541239052 +0200
-@@ -4,7 +4,7 @@
+index d74abad74..c50d9e098 100644
+--- a/packages/modules/smarthome/lambda_/on.py
++++ b/packages/modules/smarthome/lambda_/on.py
+@@ -4,7 +4,7 @@ import struct
  import codecs
  import logging
  from smarthome.smartlog import initlog
 -from pymodbus.client.sync import ModbusTcpClient
 +from pymodbus.client import ModbusTcpClient
- bp = '/var/www/html/b/ramdisk/smarthome_device_'
+ bp = '/var/www/html/openWB/ramdisk/smarthome_device_'
  devicenumber = int(sys.argv[1])
  ipadr = str(sys.argv[2])
-@@ -23,7 +23,7 @@
+@@ -23,7 +23,7 @@ log.info(' on.py devicenr %d ipadr %s ueberschuss %6d try to connect (modbus)'
           % (devicenumber, ipadr, uberschuss))
  client = ModbusTcpClient(ipadr, port=502)
  start = 103
@@ -4139,11 +4338,11 @@ diff --git a/packages/modules/smarthome/lambda_/on.py b/packages/modules/smartho
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-
 diff --git a/packages/modules/smarthome/lambda_/watt.py b/packages/modules/smarthome/lambda_/watt.py
---- a/packages/modules/smarthome/lambda_/watt.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/lambda_/watt.py	2026-05-03 10:37:43.541239052 +0200
-@@ -5,9 +5,9 @@
+index a6ad5c641..9ecd92f43 100644
+--- a/packages/modules/smarthome/lambda_/watt.py
++++ b/packages/modules/smarthome/lambda_/watt.py
+@@ -5,9 +5,9 @@ import time
  import struct
  import codecs
  import logging
@@ -4156,7 +4355,7 @@ diff --git a/packages/modules/smarthome/lambda_/watt.py b/packages/modules/smart
  from smarthome.smartlog import initlog
  from smarthome.smartret import writeret
  named_tuple = time.localtime()  # getstruct_time
-@@ -53,7 +53,7 @@
+@@ -53,7 +53,7 @@ if os.path.isfile(file_stringpv):
  # aktuelle Leistung lesen
  with ModbusTcpClient(ipadr, port=502) as client:
      start = 103
@@ -4165,7 +4364,7 @@ diff --git a/packages/modules/smarthome/lambda_/watt.py b/packages/modules/smart
      #
      value1 = resp.registers[0]
      all = format(value1, '04x')
-@@ -104,7 +104,7 @@
+@@ -104,7 +104,7 @@ with ModbusTcpClient(ipadr, port=502) as client:
              builder = BinaryPayloadBuilder(byteorder=Endian.Big, wordorder=Endian.Little)
              builder.add_16bit_int(neupower)
              pay = builder.to_registers()
@@ -4174,10 +4373,10 @@ diff --git a/packages/modules/smarthome/lambda_/watt.py b/packages/modules/smart
              if count1 < 3:
                  log.info(' %d ipadr %s written %6d %#4X' %
                           (devicenumber, ipadr, pay[0], pay[0]))
-
 diff --git a/packages/modules/smarthome/nibe/watt.py b/packages/modules/smarthome/nibe/watt.py
---- a/packages/modules/smarthome/nibe/watt.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/nibe/watt.py	2026-05-03 10:37:43.541239052 +0200
+index d723965d2..75fcff673 100644
+--- a/packages/modules/smarthome/nibe/watt.py
++++ b/packages/modules/smarthome/nibe/watt.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/python3
  import sys
@@ -4187,7 +4386,7 @@ diff --git a/packages/modules/smarthome/nibe/watt.py b/packages/modules/smarthom
  
  # get variables from arguments
  devicenumber = str(sys.argv[1])  # SmartHome device number
-@@ -18,10 +18,10 @@
+@@ -18,10 +18,10 @@ SERVER_PORT = "502"  # TCP port to connect to, should be moved into argument as
  CurrentPowerRegisterAddress = 2166  # register for current power reading
  
  # need to specify framer to enable RTUoverTCP
@@ -4200,10 +4399,10 @@ diff --git a/packages/modules/smarthome/nibe/watt.py b/packages/modules/smarthom
  
  if resp and hasattr(resp, "registers"):
      CurrentPower = resp.registers[0]  # Get the first register value
-
 diff --git a/packages/modules/smarthome/nxdacxx/off.py b/packages/modules/smarthome/nxdacxx/off.py
---- a/packages/modules/smarthome/nxdacxx/off.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/nxdacxx/off.py	2026-05-03 10:32:47.475698063 +0200
+index e2ef124ac..dc3b23cff 100644
+--- a/packages/modules/smarthome/nxdacxx/off.py
++++ b/packages/modules/smarthome/nxdacxx/off.py
 @@ -2,7 +2,7 @@
  import sys
  import os
@@ -4212,8 +4411,8 @@ diff --git a/packages/modules/smarthome/nxdacxx/off.py b/packages/modules/smarth
 +from pymodbus.client import ModbusTcpClient
  
  log = logging.getLogger("DAC")
- bp = '/var/www/html/b/ramdisk/smarthome_device_'
-@@ -19,7 +19,7 @@
+ bp = '/var/www/html/openWB/ramdisk/smarthome_device_'
+@@ -19,7 +19,7 @@ log.info('off devicenr %d ipadr %s dactyp %d' % (devicenumber, ipadr, dactyp))
  if dactyp == 2:
      client = ModbusTcpClient(ipadr, port=port)
      # DO1 ausschalten um SGready zu sperren
@@ -4222,10 +4421,10 @@ diff --git a/packages/modules/smarthome/nxdacxx/off.py b/packages/modules/smarth
  pvmodus = 0
  if os.path.isfile(file_stringpv):
      with open(file_stringpv, 'r') as f:
-
 diff --git a/packages/modules/smarthome/nxdacxx/on.py b/packages/modules/smarthome/nxdacxx/on.py
---- a/packages/modules/smarthome/nxdacxx/on.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/nxdacxx/on.py	2026-05-03 10:32:47.475698063 +0200
+index 2d9318c69..531945040 100644
+--- a/packages/modules/smarthome/nxdacxx/on.py
++++ b/packages/modules/smarthome/nxdacxx/on.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/python3
  import sys
@@ -4234,8 +4433,8 @@ diff --git a/packages/modules/smarthome/nxdacxx/on.py b/packages/modules/smartho
 +from pymodbus.client import ModbusTcpClient
  
  log = logging.getLogger("DAC")
- bp = '/var/www/html/b/ramdisk/smarthome_device_'
-@@ -18,7 +18,7 @@
+ bp = '/var/www/html/openWB/ramdisk/smarthome_device_'
+@@ -18,7 +18,7 @@ log.info('on devicenr %d ipadr %s dactyp %d' % (devicenumber, ipadr, dactyp))
  if dactyp == 2:
      client = ModbusTcpClient(ipadr, port=port)
      # DO1 einschalten um SGready zu aktivieren
@@ -4244,10 +4443,10 @@ diff --git a/packages/modules/smarthome/nxdacxx/on.py b/packages/modules/smartho
  pvmodus = 1
  with open(file_stringpv, 'w') as f:
      f.write(str(pvmodus))
-
 diff --git a/packages/modules/smarthome/nxdacxx/watt.py b/packages/modules/smarthome/nxdacxx/watt.py
---- a/packages/modules/smarthome/nxdacxx/watt.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/nxdacxx/watt.py	2026-05-03 10:32:47.475698063 +0200
+index d4fadbb9c..62a695bbf 100644
+--- a/packages/modules/smarthome/nxdacxx/watt.py
++++ b/packages/modules/smarthome/nxdacxx/watt.py
 @@ -1,7 +1,7 @@
  #!/usr/bin/python3
  import sys
@@ -4257,7 +4456,7 @@ diff --git a/packages/modules/smarthome/nxdacxx/watt.py b/packages/modules/smart
  import logging
  from smarthome.smartret import writeret
  
-@@ -86,23 +86,23 @@
+@@ -86,23 +86,23 @@ if count5 == 0:
          if dactyp == 0:
              # 10 Volts are 1000
              ausgabe = int((neupower * 1000) / maxpower)
@@ -4285,10 +4484,10 @@ diff --git a/packages/modules/smarthome/nxdacxx/watt.py b/packages/modules/smart
          else:
              pass
          if count1 < 3:
-
 diff --git a/packages/modules/smarthome/ratiotherm/watt.py b/packages/modules/smarthome/ratiotherm/watt.py
---- a/packages/modules/smarthome/ratiotherm/watt.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/ratiotherm/watt.py	2026-05-03 10:32:47.479698140 +0200
+index e993f7d7b..018af396a 100644
+--- a/packages/modules/smarthome/ratiotherm/watt.py
++++ b/packages/modules/smarthome/ratiotherm/watt.py
 @@ -1,8 +1,8 @@
  #!/usr/bin/python3
  import sys
@@ -4300,7 +4499,7 @@ diff --git a/packages/modules/smarthome/ratiotherm/watt.py b/packages/modules/sm
  import logging
  from smarthome.smartret import writeret
  
-@@ -82,7 +82,7 @@
+@@ -82,7 +82,7 @@ if count5 == 0:
          builder.add_16bit_int(neupower)
          pay = builder.to_registers()
          client = ModbusTcpClient(ipadr, port=502)
@@ -4309,10 +4508,10 @@ diff --git a/packages/modules/smarthome/ratiotherm/watt.py b/packages/modules/sm
          if count1 < 3:
              log.info(" watt devicenr %d ipadr %s written %6d %#4X"
                       % (devicenumber, ipadr, pay[0], pay[0]))
-
 diff --git a/packages/modules/smarthome/stiebel/off.py b/packages/modules/smarthome/stiebel/off.py
---- a/packages/modules/smarthome/stiebel/off.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/stiebel/off.py	2026-05-03 10:32:47.479698140 +0200
+index 2c726b1de..067b491cf 100644
+--- a/packages/modules/smarthome/stiebel/off.py
++++ b/packages/modules/smarthome/stiebel/off.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/python3
  import sys
@@ -4321,7 +4520,7 @@ diff --git a/packages/modules/smarthome/stiebel/off.py b/packages/modules/smarth
  import logging
  
  log = logging.getLogger("stiebel")
-@@ -12,7 +12,7 @@
+@@ -12,7 +12,7 @@ file_stringpv = '/var/www/html/openWB/ramdisk/smarthome_device_' + str(devicenum
  log.info('off devicenr %d ipadr %s ueberschuss %6d try to connect (modbus)' % (devicenumber, ipadr, uberschuss))
  client = ModbusTcpClient(ipadr, port=502)
  # deactivate switch one (manual 4002)
@@ -4330,10 +4529,10 @@ diff --git a/packages/modules/smarthome/stiebel/off.py b/packages/modules/smarth
  log.info('off devicenr %d ipadr %s ' % (devicenumber, ipadr))
  pvmodus = 0
  with open(file_stringpv, 'w') as f:
-
 diff --git a/packages/modules/smarthome/stiebel/on.py b/packages/modules/smarthome/stiebel/on.py
---- a/packages/modules/smarthome/stiebel/on.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/stiebel/on.py	2026-05-03 10:32:47.479698140 +0200
+index 82c9a9d6d..65af4d6b7 100644
+--- a/packages/modules/smarthome/stiebel/on.py
++++ b/packages/modules/smarthome/stiebel/on.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/python3
  import sys
@@ -4342,7 +4541,7 @@ diff --git a/packages/modules/smarthome/stiebel/on.py b/packages/modules/smartho
  import logging
  
  log = logging.getLogger("stiebel")
-@@ -12,7 +12,7 @@
+@@ -12,7 +12,7 @@ file_stringpv = '/var/www/html/openWB/ramdisk/smarthome_device_' + str(devicenum
  log.info('on devicenr %d ipadr %s ueberschuss %6d try to connect (modbus)' % (devicenumber, ipadr, uberschuss))
  client = ModbusTcpClient(ipadr, port=502)
  # activate switch one (manual 4002)
@@ -4351,11 +4550,11 @@ diff --git a/packages/modules/smarthome/stiebel/on.py b/packages/modules/smartho
  log.info('on devicenr %d ipadr %s ' % (devicenumber, ipadr))
  with open(file_stringpv, 'w') as f:
      f.write(str(1))
-
 diff --git a/packages/modules/smarthome/vampair/off.py b/packages/modules/smarthome/vampair/off.py
---- a/packages/modules/smarthome/vampair/off.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/vampair/off.py	2026-05-03 10:37:43.541239052 +0200
-@@ -4,7 +4,7 @@
+index 3b05b8b52..341b496cc 100644
+--- a/packages/modules/smarthome/vampair/off.py
++++ b/packages/modules/smarthome/vampair/off.py
+@@ -4,7 +4,7 @@ import os
  import time
  import struct
  import codecs
@@ -4364,7 +4563,7 @@ diff --git a/packages/modules/smarthome/vampair/off.py b/packages/modules/smarth
  import logging
  
  log = logging.getLogger(__name__)
-@@ -29,7 +29,7 @@
+@@ -29,7 +29,7 @@ with open(file_string, 'a') as f:
                % (time_string, devicenumber, ipadr, uberschuss), file=f)
  client = ModbusTcpClient(ipadr, port=502)
  start = 2322
@@ -4373,11 +4572,11 @@ diff --git a/packages/modules/smarthome/vampair/off.py b/packages/modules/smarth
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-
 diff --git a/packages/modules/smarthome/vampair/on.py b/packages/modules/smarthome/vampair/on.py
---- a/packages/modules/smarthome/vampair/on.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/vampair/on.py	2026-05-03 10:37:43.541239052 +0200
-@@ -4,7 +4,7 @@
+index b9b851342..f3625c7a6 100644
+--- a/packages/modules/smarthome/vampair/on.py
++++ b/packages/modules/smarthome/vampair/on.py
+@@ -4,7 +4,7 @@ import os
  import time
  import struct
  import codecs
@@ -4386,7 +4585,7 @@ diff --git a/packages/modules/smarthome/vampair/on.py b/packages/modules/smartho
  import logging
  
  log = logging.getLogger(__name__)
-@@ -31,7 +31,7 @@
+@@ -31,7 +31,7 @@ with open(file_string, 'a') as f:
                % (time_string, devicenumber, ipadr, uberschuss), file=f)
  client = ModbusTcpClient(ipadr, port=502)
  start = 2322
@@ -4395,11 +4594,11 @@ diff --git a/packages/modules/smarthome/vampair/on.py b/packages/modules/smartho
  value1 = resp.registers[0]
  all = format(value1, '04x')
  aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-
 diff --git a/packages/modules/smarthome/vampair/watt.py b/packages/modules/smarthome/vampair/watt.py
---- a/packages/modules/smarthome/vampair/watt.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/vampair/watt.py	2026-05-03 10:37:43.541239052 +0200
-@@ -5,7 +5,7 @@
+index 9607ec18d..d2b9effe8 100644
+--- a/packages/modules/smarthome/vampair/watt.py
++++ b/packages/modules/smarthome/vampair/watt.py
+@@ -5,7 +5,7 @@ import time
  import json
  import struct
  import codecs
@@ -4408,7 +4607,7 @@ diff --git a/packages/modules/smarthome/vampair/watt.py b/packages/modules/smart
  import logging
  
  log = logging.getLogger(__name__)
-@@ -48,7 +48,7 @@
+@@ -48,7 +48,7 @@ if count5 == 0:
      # aktuelle Leistung lesen
      client = ModbusTcpClient(ipadr, port=502)
      start = 2322
@@ -4417,7 +4616,7 @@ diff --git a/packages/modules/smarthome/vampair/watt.py b/packages/modules/smart
      value1 = resp.registers[0]
      all = format(value1, '04x')
      aktpower = int(struct.unpack('>h', codecs.decode(all, 'hex'))[0])
-@@ -91,7 +91,7 @@
+@@ -91,7 +91,7 @@ if count5 == 0:
                           modbuswrite), file=f)
      # modbus write
      if modbuswrite == 1:
@@ -4426,10 +4625,10 @@ diff --git a/packages/modules/smarthome/vampair/watt.py b/packages/modules/smart
          if count1 < 3:
              with open(file_string, 'a') as f:
                  log.debug('%s devicenr %s ipadr %s device written by modbus ' %
-
 diff --git a/packages/modules/smarthome/viessmann/off.py b/packages/modules/smarthome/viessmann/off.py
---- a/packages/modules/smarthome/viessmann/off.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/viessmann/off.py	2026-05-03 10:32:47.475698063 +0200
+index 5714df4c3..4f1c44747 100644
+--- a/packages/modules/smarthome/viessmann/off.py
++++ b/packages/modules/smarthome/viessmann/off.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/python3
  import sys
@@ -4438,7 +4637,7 @@ diff --git a/packages/modules/smarthome/viessmann/off.py b/packages/modules/smar
  import logging
  
  log = logging.getLogger(__name__)
-@@ -21,7 +21,7 @@
+@@ -21,7 +21,7 @@ uberschuss = int(sys.argv[3])
  log.debug(f"[Viessmann {devicenumber}] devicenr {devicenumber} ipadr {ipadr} "
            f"ueberschuss {uberschuss:6d} try to connect (modbus)")
  client = ModbusTcpClient(ipadr, port=502)
@@ -4447,10 +4646,10 @@ diff --git a/packages/modules/smarthome/viessmann/off.py b/packages/modules/smar
  log.debug(f"[Viessmann {devicenumber}] Modbus write_coil response: {rq}")
  client.close()
  log.debug(
-
 diff --git a/packages/modules/smarthome/viessmann/on.py b/packages/modules/smarthome/viessmann/on.py
---- a/packages/modules/smarthome/viessmann/on.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/viessmann/on.py	2026-05-03 10:32:47.479698140 +0200
+index e44ac8692..c40433366 100644
+--- a/packages/modules/smarthome/viessmann/on.py
++++ b/packages/modules/smarthome/viessmann/on.py
 @@ -1,6 +1,6 @@
  #!/usr/bin/python3
  import sys
@@ -4459,7 +4658,7 @@ diff --git a/packages/modules/smarthome/viessmann/on.py b/packages/modules/smart
  import logging
  
  log = logging.getLogger(__name__)
-@@ -24,7 +24,7 @@
+@@ -24,7 +24,7 @@ log.debug(
      f"[Viessmann {devicenumber}] devicenr {devicenumber} ipadr {ipadr} "
      f"ueberschuss {uberschuss:6d} try to connect (modbus)")
  client = ModbusTcpClient(ipadr, port=502)
@@ -4468,10 +4667,10 @@ diff --git a/packages/modules/smarthome/viessmann/on.py b/packages/modules/smart
  log.debug(f"[Viessmann {devicenumber}] Modbus write_coil response: {rq}")
  client.close()
  log.debug(
-
 diff --git a/packages/modules/smarthome/we514/watt.py b/packages/modules/smarthome/we514/watt.py
---- a/packages/modules/smarthome/we514/watt.py	2026-05-03 09:42:28.503130230 +0200
-+++ b/packages/modules/smarthome/we514/watt.py	2026-05-03 10:37:43.541239052 +0200
+index f9d3afe00..833a8b500 100644
+--- a/packages/modules/smarthome/we514/watt.py
++++ b/packages/modules/smarthome/we514/watt.py
 @@ -1,8 +1,8 @@
  #!/usr/bin/python3
  import sys
@@ -4483,7 +4682,7 @@ diff --git a/packages/modules/smarthome/we514/watt.py b/packages/modules/smartho
  
  # get variables from arguments
  devicenumber = str(sys.argv[1])  # SmartHome device number
-@@ -23,14 +23,14 @@
+@@ -23,14 +23,14 @@ CurrentPowerRegisterAddress = 0x141  # register for current power reading
  
  
  # need to specify framer to enable RTUoverTCP
@@ -4501,11 +4700,11 @@ diff --git a/packages/modules/smarthome/we514/watt.py b/packages/modules/smartho
  CurrentPower = int(resp.registers[0])
  
  answer = {"power": CurrentPower, "powerc": TotalEnergy}
-
 diff --git a/packages/tools/modbus_finder.py b/packages/tools/modbus_finder.py
---- a/packages/tools/modbus_finder.py	2026-05-03 09:42:28.555131596 +0200
-+++ b/packages/tools/modbus_finder.py	2026-05-03 10:32:47.411696827 +0200
-@@ -3,7 +3,7 @@
+index a2de5e201..d167f5634 100644
+--- a/packages/tools/modbus_finder.py
++++ b/packages/tools/modbus_finder.py
+@@ -3,7 +3,7 @@ import time
  from typing import Callable
  
  import pymodbus
@@ -4513,8 +4712,8 @@ diff --git a/packages/tools/modbus_finder.py b/packages/tools/modbus_finder.py
 +from modules.common.pymodbus_compat import Endian
  
  import sys
- sys.path.append("/var/www/html/b/packages")
-@@ -53,12 +53,12 @@
+ sys.path.append("/var/www/html/openWB/packages")
+@@ -53,12 +53,12 @@ try:
  
      print("Address;INT_16;UINT_16;INT_32;UINT_32")
      for address in range(start, end):
@@ -4531,11 +4730,11 @@ diff --git a/packages/tools/modbus_finder.py b/packages/tools/modbus_finder.py
          print(f"{address};{resp_INT_16};{resp_UINT_16};{resp_INT_32};{resp_UINT_32}")
  except Exception as e:
      print("Exception " + str(e))
-
 diff --git a/packages/tools/modbus_tester.py b/packages/tools/modbus_tester.py
---- a/packages/tools/modbus_tester.py	2026-05-03 09:42:28.555131596 +0200
-+++ b/packages/tools/modbus_tester.py	2026-05-03 10:32:47.411696827 +0200
-@@ -30,14 +30,14 @@
+index f32a993cc..4cb85e6ef 100644
+--- a/packages/tools/modbus_tester.py
++++ b/packages/tools/modbus_tester.py
+@@ -30,14 +30,14 @@ try:
      client = modbus.ModbusTcpClient_(host, port=port)
      if func == 4:
          if length > 1:
@@ -4554,33 +4753,43 @@ diff --git a/packages/tools/modbus_tester.py b/packages/tools/modbus_tester.py
      else:
          print("unsupported function code: " + str(func))
          exit(1)
-
 diff --git a/requirements.txt b/requirements.txt
---- a/requirements.txt	2026-05-03 09:43:08.972000000 +0200
-+++ b/requirements.txt	2026-05-03 10:23:34.943915888 +0200
+index d3f116305..8ce7c3b31 100644
+--- a/requirements.txt
++++ b/requirements.txt
 @@ -2,7 +2,7 @@
- typing-extensions
- jq
+ typing-extensions==4.13.2
+ jq==1.1.3
  paho_mqtt==1.6.1
 -pymodbus==2.5.2
 +pymodbus>=3.13.0
- pytest
- requests_mock
- lxml
-
+ pytest==6.2.5
+ requests_mock==1.9.3
+ lxml==4.9.1
 diff --git a/runs/evse_read_modbus.py b/runs/evse_read_modbus.py
---- a/runs/evse_read_modbus.py	2026-05-03 09:42:28.555131596 +0200
-+++ b/runs/evse_read_modbus.py	2026-05-03 10:36:40.228079873 +0200
-@@ -15,4 +15,4 @@
+index e513dd6ab..d736d4fcb 100644
+--- a/runs/evse_read_modbus.py
++++ b/runs/evse_read_modbus.py
+@@ -15,4 +15,4 @@ register = int(sys.argv[2])
  num = int(sys.argv[3])
  
  client = ModbusSerialClient_(str(list(Path("/dev/serial/by-path").glob("*"))[0].resolve()))
 -print(client.read_holding_registers(register, [ModbusDataType.INT_16]*num, unit=unit))
 +print(client.read_holding_registers(register, [ModbusDataType.INT_16]*num, device_id=unit))
-
+diff --git a/runs/evse_write_modbus.py b/runs/evse_write_modbus.py
+index 16f244661..1f0a31e46 100644
+--- a/runs/evse_write_modbus.py
++++ b/runs/evse_write_modbus.py
+@@ -15,4 +15,4 @@ register = int(sys.argv[2])
+ value = int(sys.argv[3])
+ 
+ client = ModbusSerialClient_(str(list(Path("/dev/serial/by-path").glob("*"))[0].resolve()))
+-client.write_register(register, value, unit=unit)
++client.write_register(register, value, device_id=unit)
 diff --git a/runs/evsewritembusdev.py b/runs/evsewritembusdev.py
---- a/runs/evsewritembusdev.py	2026-05-03 09:42:28.555131596 +0200
-+++ b/runs/evsewritembusdev.py	2026-05-03 10:37:09.448616323 +0200
+index 7a5bbfee5..8322d9ae7 100644
+--- a/runs/evsewritembusdev.py
++++ b/runs/evsewritembusdev.py
 @@ -1,11 +1,11 @@
  #!/usr/bin/python3
  import sys
@@ -4596,20 +4805,10 @@ diff --git a/runs/evsewritembusdev.py b/runs/evsewritembusdev.py
 -rq = client.write_registers(wreg, val, unit=evseid)
 +client = ModbusSerialClient(seradd, baudrate=9600, stopbits=1, bytesize=8, timeout=1)
 +rq = client.write_registers(wreg, val, device_id=evseid)
-
-diff --git a/runs/evse_write_modbus.py b/runs/evse_write_modbus.py
---- a/runs/evse_write_modbus.py	2026-05-03 09:42:28.555131596 +0200
-+++ b/runs/evse_write_modbus.py	2026-05-03 10:36:40.228079873 +0200
-@@ -15,4 +15,4 @@
- value = int(sys.argv[3])
- 
- client = ModbusSerialClient_(str(list(Path("/dev/serial/by-path").glob("*"))[0].resolve()))
--client.write_register(register, value, unit=unit)
-+client.write_register(register, value, device_id=unit)
-
 diff --git a/runs/readmodbus.py b/runs/readmodbus.py
---- a/runs/readmodbus.py	2026-05-03 09:42:28.631133592 +0200
-+++ b/runs/readmodbus.py	2026-05-03 10:37:09.448616323 +0200
+index bc865216e..057990426 100644
+--- a/runs/readmodbus.py
++++ b/runs/readmodbus.py
 @@ -1,14 +1,14 @@
  #!/usr/bin/env python3
  import sys
@@ -4628,3 +4827,6 @@ diff --git a/runs/readmodbus.py b/runs/readmodbus.py
  if request.isError():
      print('Modbus Error:', request)
  else:
+-- 
+2.52.0.windows.1
+

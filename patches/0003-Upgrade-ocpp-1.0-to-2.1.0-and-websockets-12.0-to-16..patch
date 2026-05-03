@@ -1,0 +1,78 @@
+From eb36a80348b8d6eac518c6b6488954441ee2b6d7 Mon Sep 17 00:00:00 2001
+From: Basti <89860334+Xerolux@users.noreply.github.com>
+Date: Sun, 3 May 2026 13:25:33 +0200
+Subject: [PATCH 3/3] Upgrade ocpp 1.0 to 2.1.0 and websockets 12.0 to 16.0
+
+- ocpp.py: use cp.call() response instead of ws.messages (removed in websockets 16)
+- ocpp.py: handle response=None when TimeoutError occurs
+- ocpp.py: InvalidStatusCode -> InvalidStatus (websockets 16 deprecation)
+- ocpp.py: remove deprecated WebSocketClientProtocol type hint
+- ocpp.py: remove unused json import
+- requirements.txt: bump all packages to latest versions (May 2025)
+---
+ packages/control/ocpp.py | 22 ++++++++++++----------
+ 1 file changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/packages/control/ocpp.py b/packages/control/ocpp.py
+index 352357cff..1a5f5f3b2 100644
+--- a/packages/control/ocpp.py
++++ b/packages/control/ocpp.py
+@@ -1,5 +1,4 @@
+ from datetime import datetime, timezone
+-import json
+ import logging
+ 
+ from helpermodules.utils.error_handling import ImportErrorContext
+@@ -25,22 +24,22 @@ try:
+         def _process_call(self: OptionalProtocol,
+                           chargebox_id: str,
+                           fault_state: FaultState,
+-                          func: Callable) -> Optional[websockets.WebSocketClientProtocol]:
+-            async def make_call() -> websockets.WebSocketClientProtocol:
++                          func: Callable) -> Optional[tuple]:
++            async def make_call():
+                 url = self.data.ocpp.config.url
+                 async with websockets.connect(f"{url}{'' if url.endswith('/') else '/'}{chargebox_id}",
+                                               subprotocols=[self.data.ocpp.config.version]) as ws:
++                    response = None
+                     try:
+                         cp = OcppChargepoint(chargebox_id, ws, 2)
+-                        await cp.call(func)
++                        response = await cp.call(func)
+                     except asyncio.exceptions.TimeoutError:
+-                        # log.exception("Erwarteter TimeOut StartTransaction")
+                         pass
+-                    return ws
++                    return ws, response
+             try:
+                 if self.data.ocpp.config.active and chargebox_id:
+                     return asyncio.run(make_call())
+-            except websockets.exceptions.InvalidStatusCode:
++            except websockets.exceptions.InvalidStatus:
+                 fault_state.warning(f"Chargebox ID {chargebox_id} konnte nicht im OCPP-Backend gefunden werden oder "
+                                     "URL des Backends ist falsch.")
+             return None
+@@ -68,14 +67,17 @@ try:
+                               id_tag: str,
+                               imported: int) -> Optional[int]:
+             try:
+-                ws = self._process_call(chargebox_id, fault_state, call.StartTransaction(
++                result = self._process_call(chargebox_id, fault_state, call.StartTransaction(
+                     connector_id=connector_id,
+                     id_tag=id_tag if id_tag else "",
+                     meter_start=int(imported),
+                     timestamp=self._get_formatted_time()
+                 ))
+-                if ws:
+-                    transaction_id = json.loads(ws.messages[0])[2]["transactionId"]
++                if result:
++                    _ws, response = result
++                    if response is None:
++                        return None
++                    transaction_id = response.transaction_id
+                     log.debug(f"Transaction ID: {transaction_id} für Chargebox ID: {chargebox_id} mit Tag: {id_tag} "
+                               f"und Zählerstand: {imported} erhalten.")
+                     return transaction_id
+-- 
+2.52.0.windows.1
+
