@@ -26,7 +26,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="${BUILD_ID:-$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && git rev-parse --short HEAD 2>/dev/null || echo "unknown")}"
+BUILD_ID="59dab9c"
 
 # ============================================================================
 # Argumente parsen
@@ -36,7 +36,15 @@ NONINTERACTIVE="${NONINTERACTIVE:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 DIAG_UPLOAD_CONSENT="${DIAG_UPLOAD_CONSENT:-0}"
 PASTE_UPLOAD_URL="${PASTE_UPLOAD_URL:-https://paste.blueml.eu}"
+_GH_BASE="https://raw.githubusercontent.com/Xerolux/openwb-trixie/main"
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/lib"
+if [ ! -d "$LIB_DIR" ] || [ ! -f "$LIB_DIR/menu.sh" ]; then
+    LIB_DIR="$(mktemp -d)/lib"
+    mkdir -p "$LIB_DIR"
+    for _lib in menu.sh diagnostics.sh preflight.sh bubbletea_menu.go go.mod; do
+        curl -fsSL "${_GH_BASE}/lib/${_lib}" -o "${LIB_DIR}/${_lib}" 2>/dev/null || true
+    done
+fi
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -1940,8 +1948,10 @@ main() {
         exit 1
     fi
 
-    ensure_whiptail
-    local USE_WHIPTAIL=$?
+    local USE_WHIPTAIL=1
+    if ensure_whiptail; then
+        USE_WHIPTAIL=0
+    fi
 
     log_success "Debian Trixie erkannt ($(cat /etc/debian_version 2>/dev/null || echo "?"))"
     log "Architektur: $(uname -m)$(is_raspberry_pi && echo ' (Raspberry Pi)' || true)"
