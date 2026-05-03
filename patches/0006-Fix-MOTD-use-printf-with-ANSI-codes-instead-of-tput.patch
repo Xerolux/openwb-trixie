@@ -1,0 +1,40 @@
+From 312fee5d998b01fd09e1681b997b6823378a3224 Mon Sep 17 00:00:00 2001
+From: Basti <89860334+Xerolux@users.noreply.github.com>
+Date: Sun, 3 May 2026 14:09:57 +0200
+Subject: [PATCH 6/6] Fix MOTD: use printf with ANSI codes instead of tput
+
+---
+ data/config/profile.d/99-openwb-motd.sh | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/data/config/profile.d/99-openwb-motd.sh b/data/config/profile.d/99-openwb-motd.sh
+index 077ae53c1..cb8a0e9b3 100644
+--- a/data/config/profile.d/99-openwb-motd.sh
++++ b/data/config/profile.d/99-openwb-motd.sh
+@@ -30,17 +30,16 @@ MEM=$(free -h 2>/dev/null | awk '/^Mem:/{print $3 "/" $2}' || echo "unknown")
+ # Get load
+ LOAD=$(cat /proc/loadavg 2>/dev/null | awk '{print $1 " " $2 " " $3}' || echo "unknown")
+ 
+-cat <<EOF
+-$(tput setaf 2)╔══════════════════════════════════════════════════════════╗
++printf "${GREEN}╔══════════════════════════════════════════════════════════╗
+ ║                    openWB 2.0                            ║
+-╚══════════════════════════════════════════════════════════╝$(tput sgr0)
+-  Web UI:      $(tput bold)http://${IP}/openWB/$(tput sgr0)
+-  Status:      $([ "$OWB_STATUS" = "active" ] && tput setaf 2 || tput setaf 1)${OWB_STATUS}$(tput sgr0)
++╚══════════════════════════════════════════════════════════╝${RESET}
++  Web UI:      ${BOLD}http://${IP}/openWB/${RESET}
++  Status:      $([ "$OWB_STATUS" = "active" ] && echo "$GREEN" || echo "$RED")${OWB_STATUS}${RESET}
+   Git:         ${OWB_BRANCH} @ ${OWB_GIT}
+   OS:          ${DEBIAN_VER}
+   Uptime:      ${UPTIME}
+   Load:        ${LOAD}
+   Memory:      ${MEM}
+ 
+-  $(tput dim)Logs: journalctl -u openwb2 -f$(tput sgr0)
+-EOF
++  ${DIM}Logs: journalctl -u openwb2 -f${RESET}
++"
+-- 
+2.52.0.windows.1
+

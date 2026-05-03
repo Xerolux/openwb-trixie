@@ -1,20 +1,32 @@
-From eb36a80348b8d6eac518c6b6488954441ee2b6d7 Mon Sep 17 00:00:00 2001
+From 312fee5d998b01fd09e1681b997b6823378a3224 Mon Sep 17 00:00:00 2001
 From: Basti <89860334+Xerolux@users.noreply.github.com>
-Date: Sun, 3 May 2026 13:26:36 +0200
-Subject: [PATCH 0/3] *** SUBJECT HERE ***
+Date: Sun, 3 May 2026 14:10:10 +0200
+Subject: [PATCH 0/6] *** SUBJECT HERE ***
 
 *** BLURB HERE ***
 
-Basti (3):
+Basti (6):
   Upgrade pymodbus 2.5.2 to 3.x
   Upgrade paho-mqtt 1.6.1 to 2.1.0
   Upgrade ocpp 1.0 to 2.1.0 and websockets 12.0 to 16.0
+  Add Debian Trixie / Python 3.13+ support with platform detection
+  Add chrony NTP and login MOTD
+  Fix MOTD: use printf with ANSI codes instead of tput
 
+ .github/workflows/github-actions-python.yml   |   7 +-
+ README.md                                     |   9 +-
+ data/config/chrony/chrony.conf                |  32 +++++
+ data/config/openwb-simpleAPI.service          |   4 +-
+ data/config/openwb2.service                   |   4 +-
+ data/config/openwbRemoteSupport.service       |   4 +-
+ data/config/profile.d/99-openwb-motd.sh       |  45 +++++++
  .../sample_modbus/sample_modbus/bat.py        |   6 +-
  .../sample_modbus/sample_modbus/counter.py    |   4 +-
  .../sample_modbus/sample_modbus/inverter.py   |   4 +-
+ openwb-install.sh                             |  46 +++++--
  packages/control/ocpp.py                      |  22 ++--
  packages/helpermodules/broker.py              |   4 +-
+ packages/helpermodules/create_debug.py        |   7 +-
  packages/modbus_control_tester.py             |  18 +--
  .../chargepoint_module.py                     |   8 +-
  packages/modules/common/b23.py                |  16 +--
@@ -148,6 +160,8 @@ Basti (3):
  .../devices/victron/victron/counter.py        |   8 +-
  .../devices/victron/victron/inverter.py       |   6 +-
  .../devices/victron/victron_3p75ct/counter.py |  14 +--
+ .../internal_chargepoint_handler.py           |   2 +-
+ .../internal_chargepoint_handler_config.py    |   2 +-
  packages/modules/io_devices/dimm_kit/api.py   |  10 +-
  packages/modules/smarthome/acthor/watt.py     |   8 +-
  packages/modules/smarthome/askoheat/watt.py   |   8 +-
@@ -172,18 +186,27 @@ Basti (3):
  packages/modules/smarthome/viessmann/off.py   |   4 +-
  packages/modules/smarthome/viessmann/on.py    |   4 +-
  packages/modules/smarthome/we514/watt.py      |  10 +-
+ packages/modules/vehicles/ovms/api.py         |   4 +-
+ packages/modules/vehicles/tronity/api.py      |   4 +-
+ packages/modules/vehicles/vwgroup/vwgroup.py  |   4 +-
  packages/smarthome/smartcommon.py             |   6 +-
  packages/tools/modbus_finder.py               |  10 +-
  packages/tools/modbus_tester.py               |   8 +-
  requirements.txt                              |  52 ++++----
+ runs/atreboot.sh                              |  65 +++++++---
  runs/evse_read_modbus.py                      |   2 +-
  runs/evse_write_modbus.py                     |   2 +-
  runs/evsewritembusdev.py                      |   6 +-
+ runs/install_packages.sh                      |  56 ++++++---
+ runs/platform_detect.sh                       |  85 +++++++++++++
  runs/readmodbus.py                            |   6 +-
  runs/remoteSupport/remoteSupport.py           |   2 +-
  simpleAPI/simpleAPI_mqtt.py                   |   2 +-
- 172 files changed, 850 insertions(+), 727 deletions(-)
+ 189 files changed, 1163 insertions(+), 794 deletions(-)
+ create mode 100644 data/config/chrony/chrony.conf
+ create mode 100644 data/config/profile.d/99-openwb-motd.sh
  create mode 100644 packages/modules/common/pymodbus_compat.py
+ create mode 100644 runs/platform_detect.sh
 
 -- 
 2.52.0.windows.1

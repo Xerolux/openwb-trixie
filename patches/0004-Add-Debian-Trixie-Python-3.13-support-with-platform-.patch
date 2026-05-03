@@ -1,0 +1,574 @@
+From b6bee15c1ce6e42e5a395cb73cd8908992414dd2 Mon Sep 17 00:00:00 2001
+From: Basti <89860334+Xerolux@users.noreply.github.com>
+Date: Sun, 3 May 2026 13:56:14 +0200
+Subject: [PATCH 4/6] Add Debian Trixie / Python 3.13+ support with platform
+ detection
+
+Major changes:
+- New platform_detect.sh: detects RPi/x86/VM, architecture, Debian version
+- Virtual environment at /opt/openwb-venv (avoids PEP 668 conflicts)
+- install_packages.sh: platform-aware package installation (no python3-pip,
+  no python3-urllib3, conditional GUI/RPi packages, evdev only when available)
+- atreboot.sh: uses venv pip, platform-aware boot config (RPi only),
+  display detection (skips tvservice on non-RPi/VM)
+- openwb-install.sh: creates venv, auto-detects PHP version for upload limit
+- Service files: use /opt/openwb-venv/bin/python3 for all ExecStart
+- requirements.txt: removed asyncio shim, evdev commented (platform-specific)
+- Python fixes: datetime.utcnow() -> datetime.now(timezone.utc) (3 files)
+- Python fixes: #!/usr/bin/python -> #!/usr/bin/env python3 (2 files)
+- create_debug.py: guard vcgencmd calls for non-RPi systems
+- CI: test against Python 3.10, 3.12, 3.13 matrix
+- README: update supported OS versions (Bookworm/Trixie)
+---
+ .github/workflows/github-actions-python.yml   |  7 +-
+ README.md                                     |  9 +-
+ data/config/openwb-simpleAPI.service          |  4 +-
+ data/config/openwb2.service                   |  4 +-
+ data/config/openwbRemoteSupport.service       |  4 +-
+ openwb-install.sh                             | 33 ++++---
+ packages/helpermodules/create_debug.py        |  7 +-
+ .../internal_chargepoint_handler.py           |  2 +-
+ .../internal_chargepoint_handler_config.py    |  2 +-
+ packages/modules/vehicles/ovms/api.py         |  4 +-
+ packages/modules/vehicles/tronity/api.py      |  4 +-
+ packages/modules/vehicles/vwgroup/vwgroup.py  |  4 +-
+ requirements.txt                              |  4 +-
+ runs/atreboot.sh                              | 45 ++++++----
+ runs/install_packages.sh                      | 55 +++++++++---
+ runs/platform_detect.sh                       | 85 +++++++++++++++++++
+ 16 files changed, 204 insertions(+), 69 deletions(-)
+ create mode 100644 runs/platform_detect.sh
+
+diff --git a/.github/workflows/github-actions-python.yml b/.github/workflows/github-actions-python.yml
+index e942a8e89..eb6bdfd83 100644
+--- a/.github/workflows/github-actions-python.yml
++++ b/.github/workflows/github-actions-python.yml
+@@ -5,12 +5,15 @@ on: pull_request
+ jobs:
+   build:
+     runs-on: ubuntu-latest
++    strategy:
++      matrix:
++        python-version: ["3.10", "3.12", "3.13"]
+     steps:
+       - uses: actions/checkout@v4
+-      - name: Set up Python 3.9
++      - name: Set up Python ${{ matrix.python-version }}
+         uses: actions/setup-python@v5
+         with:
+-          python-version: "3.9.12"
++          python-version: ${{ matrix.python-version }}
+       - name: Install dependencies
+         run: |
+           pip3 install -r "/home/runner/work/core/core/requirements.txt"
+diff --git a/README.md b/README.md
+index 14b32635c..4db699999 100644
+--- a/README.md
++++ b/README.md
+@@ -33,11 +33,10 @@ Bei fertig erworbenen openWB ist die Software bereits vorinstalliert.
+ Software:
+ 
+ - Installiertes Raspberry Pi OS auf einem Raspberry Pi 3b oder besser.
+-- Raspberry Pi OS Lite installieren. Aktuell wird in der Version 2.1 nur **Debian 11 "Bullseye"** (derzeit "oldstable") unterstützt.
+-<https://downloads.raspberrypi.org/raspios_oldstable_lite_armhf/>
+-- alternativ kann auch ein x86_64 System (Hardware oder als VM) mit installiertem **Debian 11 "Bullseye"** als Basis verwendet werden.
+-- Eine Installation unter **Debian 12 "Bookworm"** wird noch nicht unterstützt!
+-- Bitte beachten das **Debian 11 "Bullseye"** nur mit erheblichem Aufwand mit einem Raspberry Pi 5 kompatibel ist. Wir empfehlen die Nutzung von einem Raspberry Pi 3b.
++- Raspberry Pi OS Lite installieren. Unterstützt werden **Debian 12 "Bookworm"** und **Debian 13 "Trixie"**.
++- alternativ kann auch ein x86_64 System (Hardware oder als VM) mit installiertem **Debian 12 "Bookworm"** oder **Debian 13 "Trixie"** als Basis verwendet werden.
++- **Python 3.10 oder neuer** wird benötigt (Python 3.13 empfohlen).
++- Die Installation richtet automatisch ein Python Virtual Environment unter `/opt/openwb-venv` ein.
+ 
+ In der Shell folgendes eingeben:
+ 
+diff --git a/data/config/openwb-simpleAPI.service b/data/config/openwb-simpleAPI.service
+index b549c9223..54f1668dc 100644
+--- a/data/config/openwb-simpleAPI.service
++++ b/data/config/openwb-simpleAPI.service
+@@ -1,4 +1,4 @@
+-# openwb-version:1
++# openwb-version:2
+ [Unit]
+ Description="openWB mqtt simpleAPI"
+ After=mosquitto.service
+@@ -6,7 +6,7 @@ After=mosquitto.service
+ [Service]
+ User=openwb
+ WorkingDirectory=/var/www/html/openWB
+-ExecStart=/var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py
++ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/simpleAPI/simpleAPI_mqtt.py
+ Restart=always
+ # extend timeout to 15min for long running atreboot
+ TimeoutStartSec=900
+diff --git a/data/config/openwb2.service b/data/config/openwb2.service
+index 6b0c007a7..e31239e88 100644
+--- a/data/config/openwb2.service
++++ b/data/config/openwb2.service
+@@ -1,4 +1,4 @@
+-# openwb-version:4
++# openwb-version:5
+ [Unit]
+ Description="Regelung openWB 2.0"
+ After=mosquitto_local.service
+@@ -7,7 +7,7 @@ After=mosquitto_local.service
+ User=openwb
+ WorkingDirectory=/var/www/html/openWB
+ ExecStartPre=-/var/www/html/openWB/runs/atreboot.sh
+-ExecStart=/var/www/html/openWB/packages/main.py
++ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/packages/main.py
+ Restart=always
+ # extend timeout to 15min for long running atreboot
+ TimeoutStartSec=900
+diff --git a/data/config/openwbRemoteSupport.service b/data/config/openwbRemoteSupport.service
+index 0b49f1f0f..8dec8bf32 100644
+--- a/data/config/openwbRemoteSupport.service
++++ b/data/config/openwbRemoteSupport.service
+@@ -1,4 +1,4 @@
+-# openwb-version:3
++# openwb-version:4
+ [Unit]
+ Description="Remote Support Handler openWB 2.0"
+ After=mosquitto_local.service
+@@ -6,7 +6,7 @@ After=mosquitto_local.service
+ [Service]
+ User=openwb
+ WorkingDirectory=/var/www/html/openWB
+-ExecStart=/var/www/html/openWB/runs/remoteSupport/remoteSupport.py
++ExecStart=/opt/openwb-venv/bin/python3 /var/www/html/openWB/runs/remoteSupport/remoteSupport.py
+ Restart=always
+ 
+ [Install]
+diff --git a/openwb-install.sh b/openwb-install.sh
+index 566535783..db972cc49 100755
+--- a/openwb-install.sh
++++ b/openwb-install.sh
+@@ -97,16 +97,22 @@ echo -n "replacing apache default page..."
+ cp "${OPENWBBASEDIR}/data/config/apache/000-default.conf" "/etc/apache2/sites-available/"
+ cp "${OPENWBBASEDIR}/index.html" /var/www/html/index.html
+ echo "done"
+-echo -n "fix upload limit..."
+-if [ -d "/etc/php/7.3/" ]; then
+-	echo "upload_max_filesize = 300M" > /etc/php/7.3/apache2/conf.d/20-uploadlimit.ini
+-	echo "post_max_size = 300M" >> /etc/php/7.3/apache2/conf.d/20-uploadlimit.ini
+-	echo "done (OS Buster)"
+-elif [ -d "/etc/php/7.4/" ]; then
+-	echo "upload_max_filesize = 300M" > /etc/php/7.4/apache2/conf.d/20-uploadlimit.ini
+-	echo "post_max_size = 300M" >> /etc/php/7.4/apache2/conf.d/20-uploadlimit.ini
+-	echo "done (OS Bullseye)"
+-fi
++	echo -n "fix upload limit..."
++	upload_limit_ini="upload_max_filesize = 300M
++post_max_size = 300M"
++	php_dir=""
++	for dir in /etc/php/*/apache2/conf.d; do
++		if [ -d "$dir" ]; then
++			php_dir="$dir"
++			break
++		fi
++	done
++	if [ -n "$php_dir" ]; then
++		echo "$upload_limit_ini" > "${php_dir}/20-uploadlimit.ini"
++		echo "done ($(basename $(dirname $(dirname "$php_dir"))))"
++	else
++		echo "no PHP apache2 config directory found, skipping"
++	fi
+ echo -n "enabling apache ssl module..."
+ a2enmod ssl
+ a2enmod proxy_wstunnel
+@@ -118,8 +124,11 @@ echo -n "restarting apache..."
+ systemctl restart apache2
+ echo "done"
+ 
+-echo "installing python requirements..."
+-sudo -u "$OPENWB_USER" pip install -r "${OPENWBBASEDIR}/requirements.txt"
++echo "installing python requirements into venv..."
++python3 -m venv /opt/openwb-venv
++chown -R "$OPENWB_USER:$OPENWB_GROUP" /opt/openwb-venv
++sudo -u "$OPENWB_USER" /opt/openwb-venv/bin/python3 -m pip install --upgrade pip
++sudo -u "$OPENWB_USER" /opt/openwb-venv/bin/python3 -m pip install -r "${OPENWBBASEDIR}/requirements.txt"
+ 
+ echo "installing openwb2 system service..."
+ ln -s "${OPENWBBASEDIR}/data/config/openwb2.service" /etc/systemd/system/openwb2.service
+diff --git a/packages/helpermodules/create_debug.py b/packages/helpermodules/create_debug.py
+index 28f82085d..69f8bbbc9 100644
+--- a/packages/helpermodules/create_debug.py
++++ b/packages/helpermodules/create_debug.py
+@@ -63,8 +63,11 @@ def get_common_data():
+ 
+ def get_hardware_data():
+     parsed_data = ""
+-    temp = run_shell_command(["vcgencmd measure_temp"]).removeprefix("temp=").removesuffix("\n")
+-    throttled = int(run_shell_command("vcgencmd get_throttled").removeprefix("throttled="), 16)
++    try:
++        temp = run_shell_command(["vcgencmd", "measure_temp"]).removeprefix("temp=").removesuffix("\n")
++        throttled = int(run_shell_command(["vcgencmd", "get_throttled"]).removeprefix("throttled="), 16)
++    except Exception:
++        return "Hardware data not available (vcgencmd not found or not a Raspberry Pi)\n"
+     parsed_data += f"Temperature_C: {temp}"
+     mask_undervoltage = 0b0001
+     mask_temp_limit = 0b1000
+diff --git a/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler.py b/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler.py
+index 30fcf6b12..c4628b0a5 100644
+--- a/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler.py
++++ b/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/python
++#!/usr/bin/env python3
+ import copy
+ import logging
+ from threading import Event, Thread
+diff --git a/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler_config.py b/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler_config.py
+index 736bf8ec0..2b80baf10 100644
+--- a/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler_config.py
++++ b/packages/modules/internal_chargepoint_handler/internal_chargepoint_handler_config.py
+@@ -1,4 +1,4 @@
+-#!/usr/bin/python
++#!/usr/bin/env python3
+ from dataclasses import dataclass, field
+ from typing import List, Optional
+ 
+diff --git a/packages/modules/vehicles/ovms/api.py b/packages/modules/vehicles/ovms/api.py
+index cdd530d5c..ac2c1a80a 100755
+--- a/packages/modules/vehicles/ovms/api.py
++++ b/packages/modules/vehicles/ovms/api.py
+@@ -4,7 +4,7 @@ from logging import getLogger
+ from typing import Union
+ from asyncio import new_event_loop, set_event_loop
+ from time import mktime
+-from datetime import datetime
++from datetime import datetime, timezone
+ from json import loads, dumps
+ from modules.vehicles.ovms.config import OVMS
+ from helpermodules.pub import Pub
+@@ -34,7 +34,7 @@ def write_config(topic: str, config: dict):
+ 
+ def utc2local(utc):
+     epoch = mktime(utc.timetuple())
+-    offset = datetime.fromtimestamp(epoch) - datetime.utcfromtimestamp(epoch)
++    offset = datetime.fromtimestamp(epoch) - datetime.fromtimestamp(epoch, tz=timezone.utc).replace(tzinfo=None)
+     return utc + offset
+ 
+ 
+diff --git a/packages/modules/vehicles/tronity/api.py b/packages/modules/vehicles/tronity/api.py
+index 8696a12a0..590bbe478 100644
+--- a/packages/modules/vehicles/tronity/api.py
++++ b/packages/modules/vehicles/tronity/api.py
+@@ -8,7 +8,7 @@ from modules.common import req
+ from modules.common.abstract_vehicle import VehicleUpdateData
+ from modules.vehicles.tronity.config import TronityVehicleSocConfiguration, TronityVehicleSoc
+ from modules.common.component_state import CarState
+-from datetime import datetime
++from datetime import datetime, timezone
+ 
+ log = logging.getLogger(__name__)
+ 
+@@ -29,7 +29,7 @@ def is_token_valid(access_token: str) -> bool:
+         log.debug("Found Token: %s", access_token)
+ 
+     decoded_data = jwt.decode(jwt=access_token, verify=False, algorithms=['HS256'], options={"verify_signature": False})
+-    if datetime.utcfromtimestamp(decoded_data['exp']) < datetime.utcnow():
++    if datetime.fromtimestamp(decoded_data['exp'], tz=timezone.utc) < datetime.now(timezone.utc):
+         log.debug("Token expired: %s", decoded_data)
+         return False
+     else:
+diff --git a/packages/modules/vehicles/vwgroup/vwgroup.py b/packages/modules/vehicles/vwgroup/vwgroup.py
+index 35a92d0d9..d857bcedd 100644
+--- a/packages/modules/vehicles/vwgroup/vwgroup.py
++++ b/packages/modules/vehicles/vwgroup/vwgroup.py
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env python3
+ 
+-from datetime import datetime
++from datetime import datetime, timezone
+ from json import dumps
+ import logging
+ from time import mktime, time
+@@ -32,7 +32,7 @@ class VwGroup(object):
+     # convert utc timestamp to local time
+     def utc2local(self, utc):
+         epoch = mktime(utc.timetuple())
+-        offset = datetime.fromtimestamp(epoch) - datetime.utcfromtimestamp(epoch)
++        offset = datetime.fromtimestamp(epoch) - datetime.fromtimestamp(epoch, tz=timezone.utc).replace(tzinfo=None)
+         return utc + offset
+ 
+     # async method, called from sync fetch_soc, required because libvwid/libskoda expect async environment
+diff --git a/requirements.txt b/requirements.txt
+index fbe5786d3..e1678785c 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -11,7 +11,6 @@ schedule>=1.2.2
+ PyJWT>=2.12.1
+ bs4>=0.0.2
+ pkce>=1.0.3
+-evdev>=1.9.3
+ cryptography>=47.0.0
+ msal>=1.36.0
+ python-dateutil>=2.9.0
+@@ -23,5 +22,6 @@ protobuf>=7.34.1
+ ocpp>=2.1.0
+ websockets>=16.0
+ pycarwings3>=0.7.14
+-asyncio>=4.0.0
+ passlib>=1.7.4
++# platform-specific packages (installed by install_packages.sh when available)
++# evdev>=1.9.3  # Linux input devices - only on systems with kernel headers
+diff --git a/runs/atreboot.sh b/runs/atreboot.sh
+index 8166249e8..290e2c88a 100755
+--- a/runs/atreboot.sh
++++ b/runs/atreboot.sh
+@@ -1,5 +1,7 @@
+ #!/bin/bash
+ OPENWBBASEDIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
++source "${OPENWBBASEDIR}/runs/platform_detect.sh"
++detect_platform
+ hasInet=0
+ 
+ # setup log file
+@@ -72,18 +74,22 @@ chmod 666 "$LOGFILE"
+ 
+ 	boot_config_source="${OPENWBBASEDIR}/data/config/boot_config.txt"
+ 	boot_config_target="/boot/config.txt"
+-	echo "checking init in $boot_config_target..."
+-	if versionMatch "$boot_config_source" "$boot_config_target"; then
+-		echo "already up to date"
++	if [ "$PLATFORM_IS_RPI" = true ]; then
++		echo "checking init in $boot_config_target..."
++		if versionMatch "$boot_config_source" "$boot_config_target"; then
++			echo "already up to date"
++		else
++			echo "openwb section not found or outdated"
++			pattern_begin=$(grep -m 1 '#' "$boot_config_source")
++			pattern_end=$(grep '#' "$boot_config_source" | tail -n 1)
++			sudo sed -i "/$pattern_begin/,/$pattern_end/d" "$boot_config_target"
++			echo "adding init to $boot_config_target..."
++			sudo tee -a "$boot_config_target" <"$boot_config_source" >/dev/null
++			echo "done"
++			sudo reboot now
++		fi
+ 	else
+-		echo "openwb section not found or outdated"
+-		pattern_begin=$(grep -m 1 '#' "$boot_config_source")
+-		pattern_end=$(grep '#' "$boot_config_source" | tail -n 1)
+-		sudo sed -i "/$pattern_begin/,/$pattern_end/d" "$boot_config_target"
+-		echo "adding init to $boot_config_target..."
+-		sudo tee -a "$boot_config_target" <"$boot_config_source" >/dev/null
+-		echo "done"
+-		sudo reboot now
++		echo "not a Raspberry Pi, skipping boot config"
+ 	fi
+ 
+ 	ramdisk_config_source="${OPENWBBASEDIR}/data/config/ramdisk_config.txt"
+@@ -160,8 +166,8 @@ chmod 666 "$LOGFILE"
+ 		echo "path '/etc/apt/apt.conf.d' is missing! unsupported system!"
+ 	fi
+ 	if ((hasInet == 1)); then
+-		# remove urllib3 version to avoid conflicts
+-		pip uninstall urllib3 -y
++		echo "ensuring python virtual environment..."
++		ensure_venv "$PLATFORM_VENV"
+ 		"${OPENWBBASEDIR}/runs/install_packages.sh"
+ 	else
+ 		echo "no internet connection, skipping package installation"
+@@ -241,7 +247,7 @@ chmod 666 "$LOGFILE"
+ 	# detect connected displays
+ 	# set default to "true" as fallback if "tvservice" is missing
+ 	displayDetected="true"
+-	if which tvservice >/dev/null; then
++	if [ "$PLATFORM_IS_RPI" = true ] && which tvservice >/dev/null; then
+ 		echo "detected 'tvservice', query for connected displays"
+ 		output=$(tvservice -l)
+ 		echo "$output"
+@@ -251,8 +257,11 @@ chmod 666 "$LOGFILE"
+ 		else
+ 			echo "detected HDMI or LCD display(s)"
+ 		fi
++	elif [ "$PLATFORM_VIRT" != "none" ]; then
++		echo "virtualized environment detected, no physical display"
++		displayDetected="false"
+ 	else
+-		echo "'tvservice' not found, assuming a display is present"
++		echo "no tvservice, assuming a display is present"
+ 	fi
+ 	echo "displayDetected: $displayDetected"
+ 	forceDisplaySetup=0
+@@ -316,12 +325,12 @@ chmod 666 "$LOGFILE"
+ 
+ 	# check for python dependencies
+ 	if ((hasInet == 1)); then
+-		echo "install required python packages with 'pip3'..."
+-		if pip3 install --only-binary :all: -r "${OPENWBBASEDIR}/requirements.txt"; then
++		echo "install required python packages into venv..."
++		if $PLATFORM_VENV/bin/python3 -m pip install --only-binary :all: -r "${OPENWBBASEDIR}/requirements.txt"; then
+ 			echo "done"
+ 		else
+ 			echo "failed!"
+-			message="Bei der Installation der benötigten Python-Bibliotheken ist ein Fehler aufgetreten! Bitte die Logdateien prüfen."
++			message="Bei der Installation der benoetigten Python-Bibliotheken ist ein Fehler aufgetreten! Bitte die Logdateien pruefen."
+ 			payload=$(printf '{"source": "system", "type": "danger", "message": "%s", "timestamp": %d}' "$message" "$(date +"%s")")
+ 			mosquitto_pub -p 1886 -t "openWB/system/messages/$(date +"%s%3N")" -r -m "$payload"
+ 		fi
+diff --git a/runs/install_packages.sh b/runs/install_packages.sh
+index f16ed3118..e31f19551 100755
+--- a/runs/install_packages.sh
++++ b/runs/install_packages.sh
+@@ -1,25 +1,52 @@
+ #!/bin/bash
++OPENWBBASEDIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
++source "${OPENWBBASEDIR}/runs/platform_detect.sh"
++detect_platform
++
++echo "=== Platform Detection ==="
++echo "  Architecture:  $PLATFORM_ARCH ($PLATFORM_KERNEL)"
++echo "  Debian:        $PLATFORM_DEBIAN_VERSION ($PLATFORM_DEBIAN_CODENAME)"
++echo "  Virtualization: $PLATFORM_VIRT"
++echo "  Raspberry Pi:  $PLATFORM_IS_RPI"
++echo "  64-bit:        $PLATFORM_IS_64BIT"
++echo "==========================="
++
+ echo "add required repositories..."
+-# add mosquitto repository
+ if [ ! -f /etc/apt/sources.list.d/mosquitto.list ]; then
+ 	sudo apt-get -q -y install wget apt-transport-https
+ 	sudo wget -q https://repo.mosquitto.org/debian/mosquitto-repo.gpg -O /etc/apt/trusted.gpg.d/mosquitto-repo.gpg
+-	# get installed debian version
+-	. /etc/os-release
+-	sudo wget -q -O /etc/apt/sources.list.d/mosquitto.list "https://repo.mosquitto.org/debian/mosquitto-${VERSION_CODENAME}.list"
++	sudo wget -q -O /etc/apt/sources.list.d/mosquitto.list \
++		"https://repo.mosquitto.org/debian/mosquitto-${PLATFORM_DEBIAN_CODENAME}.list"
+ fi
+ echo "done"
+ 
+ echo "install required packages with 'apt-get'..."
+ sudo apt-get -q update
+-sudo apt-get -q -y install \
+-	vim bc jq curl socat sshpass sudo ssl-cert mmc-utils inotify-tools iptables \
+-	apache2 libapache2-mod-php \
+-	php php-gd php-curl php-xml php-json \
+-	git \
+-	mosquitto mosquitto-clients \
+-	python3-pip \
+-	python3-urllib3 \
+-	xserver-xorg x11-xserver-utils openbox-lxde-session lightdm lightdm-autologin-greeter accountsservice \
+-	chromium chromium-l10n
++
++COMMON_PACKAGES=(
++	vim bc jq curl socat sshpass sudo ssl-cert inotify-tools iptables
++	apache2 libapache2-mod-php
++	php php-gd php-curl php-xml php-json
++	git
++	mosquitto mosquitto-clients
++	python3 python3-venv python3-dev
++)
++
++if [ "$PLATFORM_IS_RPI" = true ]; then
++	COMMON_PACKAGES+=(mmc-utils)
++fi
++
++sudo apt-get -q -y install "${COMMON_PACKAGES[@]}"
++echo "base packages done"
++
++platform_install_rpi_packages
++
++platform_install_gui_packages
++
++echo "installing evdev into venv..."
++if [ -f "$PLATFORM_VENV/bin/python3" ]; then
++	$PLATFORM_VENV/bin/python3 -m pip install --only-binary :all: evdev 2>/dev/null || \
++		echo "evdev not available on this platform, skipping"
++fi
++
+ echo "done"
+diff --git a/runs/platform_detect.sh b/runs/platform_detect.sh
+new file mode 100644
+index 000000000..516fbf0f9
+--- /dev/null
++++ b/runs/platform_detect.sh
+@@ -0,0 +1,85 @@
++#!/bin/bash
++detect_platform() {
++	PLATFORM_ARCH=$(dpkg --print-architecture 2>/dev/null || echo "unknown")
++	PLATFORM_KERNEL=$(uname -m)
++	PLATFORM_VIRT="none"
++	PLATFORM_IS_RPI=false
++	PLATFORM_IS_64BIT=false
++	PLATFORM_DEBIAN_VERSION=""
++	PLATFORM_DEBIAN_CODENAME=""
++
++	if [ -f /etc/os-release ]; then
++		. /etc/os-release
++		PLATFORM_DEBIAN_VERSION="${VERSION_ID:-unknown}"
++		PLATFORM_DEBIAN_CODENAME="${VERSION_CODENAME:-unknown}"
++	fi
++
++	if command -v systemd-detect-virt >/dev/null 2>&1; then
++		PLATFORM_VIRT=$(systemd-detect-virt 2>/dev/null || echo "none")
++	fi
++
++	if [ -f /proc/device-tree/model ]; then
++		local model
++		model=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
++		case "$model" in
++			*Raspberry*Pi* | *RPI*)
++				PLATFORM_IS_RPI=true
++				;;
++		esac
++	fi
++
++	case "$PLATFORM_KERNEL" in
++		x86_64 | aarch64)
++			PLATFORM_IS_64BIT=true
++			;;
++	esac
++
++	if [ -n "${OPENWBBASEDIR:-}" ]; then
++		PLATFORM_VENV="/opt/openwb-venv"
++	else
++		PLATFORM_VENV="/opt/openwb-venv"
++	fi
++}
++
++platform_has_gui() {
++	if [ "$PLATFORM_IS_RPI" = true ] || [ "$PLATFORM_VIRT" = "none" ]; then
++		return 0
++	fi
++	return 1
++}
++
++platform_install_gui_packages() {
++	if platform_has_gui; then
++		sudo apt-get -q -y install \
++			xserver-xorg x11-xserver-utils openbox-lxde-session lightdm \
++			lightdm-autologin-greeter accountsservice \
++			chromium chromium-l10n 2>/dev/null || \
++		sudo apt-get -q -y install \
++			xserver-xorg x11-xserver-utils openbox-lxde-session lightdm \
++			lightdm-autologin-greeter accountsservice
++	fi
++}
++
++platform_install_rpi_packages() {
++	if [ "$PLATFORM_IS_RPI" = true ]; then
++		echo "Raspberry Pi detected, installing RPi-specific packages..."
++		sudo apt-get -q -y install gpiozero 2>/dev/null || true
++	fi
++}
++
++ensure_venv() {
++	local venv_path="${1:-$PLATFORM_VENV}"
++	if [ ! -f "$venv_path/bin/python3" ]; then
++		echo "Creating Python virtual environment at $venv_path..."
++		sudo python3 -m venv "$venv_path"
++		sudo chown -R openwb:openwb "$venv_path"
++		$venv_path/bin/python3 -m pip install --upgrade pip
++		echo "venv created."
++	else
++		echo "venv already exists at $venv_path."
++	fi
++}
++
++venv_pip() {
++	$PLATFORM_VENV/bin/python3 -m pip "$@"
++}
+-- 
+2.52.0.windows.1
+

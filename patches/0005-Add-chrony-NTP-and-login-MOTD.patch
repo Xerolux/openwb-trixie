@@ -1,0 +1,180 @@
+From d4d8dab40240d6defe0122c66b3727270d914993 Mon Sep 17 00:00:00 2001
+From: Basti <89860334+Xerolux@users.noreply.github.com>
+Date: Sun, 3 May 2026 14:00:05 +0200
+Subject: [PATCH 5/6] Add chrony NTP and login MOTD
+
+- chrony.conf: PTB Braunschweig primary + German/European NTP pools
+- Replaces systemd-timesyncd with chrony for better time sync
+- MOTD script: shows IP, openWB web URL, git branch/hash, service status,
+  OS version, uptime, memory, load on every SSH login
+- Integrated into both openwb-install.sh and atreboot.sh
+---
+ data/config/chrony/chrony.conf          | 32 +++++++++++++++++
+ data/config/profile.d/99-openwb-motd.sh | 46 +++++++++++++++++++++++++
+ openwb-install.sh                       | 13 +++++++
+ runs/atreboot.sh                        | 20 +++++++++++
+ runs/install_packages.sh                |  1 +
+ 5 files changed, 112 insertions(+)
+ create mode 100644 data/config/chrony/chrony.conf
+ create mode 100644 data/config/profile.d/99-openwb-motd.sh
+
+diff --git a/data/config/chrony/chrony.conf b/data/config/chrony/chrony.conf
+new file mode 100644
+index 000000000..508e6f662
+--- /dev/null
++++ b/data/config/chrony/chrony.conf
+@@ -0,0 +1,32 @@
++# openwb-version:1
++# Chrony NTP configuration for openWB
++# PTB Braunschweig (primary, Germany's national metrology institute)
++server ptbtime1.ptb.de iburst prefer
++server ptbtime2.ptb.de iburst
++
++# NTP Pool (Germany)
++pool 0.de.pool.ntp.org iburst
++
++# Ubuntu NTP pools (reliable fallback)
++pool ntp.ubuntu.com iburst maxsources 4
++pool 0.ubuntu.pool.ntp.org iburst maxsources 1
++pool 1.ubuntu.pool.ntp.org iburst maxsources 1
++pool 2.ubuntu.pool.ntp.org iburst maxsources 2
++
++# Allow local network to query this server (useful for LAN charge points)
++allow 192.168.0.0/16
++allow 10.0.0.0/8
++allow 172.16.0.0/12
++
++# Drift file
++driftfile /var/lib/chrony/chrony.drift
++
++# Log
++logdir /var/log/chrony
++maxupdateskew 100.0
++
++# Allow step on first sync
++makestep 1 -1
++
++# RTC sync
++rtconutc
+diff --git a/data/config/profile.d/99-openwb-motd.sh b/data/config/profile.d/99-openwb-motd.sh
+new file mode 100644
+index 000000000..077ae53c1
+--- /dev/null
++++ b/data/config/profile.d/99-openwb-motd.sh
+@@ -0,0 +1,46 @@
++#!/bin/bash
++OPENWBBASEDIR="/var/www/html/openWB"
++
++IP=$(hostname -I 2>/dev/null | awk '{print $1}')
++if [ -z "$IP" ]; then
++	IP="unknown"
++fi
++
++# Get openWB version
++OWB_VERSION="unknown"
++OWB_GIT="unknown"
++if [ -d "$OPENWBBASEDIR/.git" ]; then
++	OWB_GIT=$(cd "$OPENWBBASEDIR" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
++	OWB_BRANCH=$(cd "$OPENWBBASEDIR" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
++fi
++
++# Check service status
++OWB_STATUS=$(systemctl is-active openwb2.service 2>/dev/null || echo "unknown")
++
++# Get Debian version
++. /etc/os-release 2>/dev/null
++DEBIAN_VER="${PRETTY_NAME:-unknown}"
++
++# Get uptime
++UPTIME=$(uptime -p 2>/dev/null || echo "unknown")
++
++# Get memory
++MEM=$(free -h 2>/dev/null | awk '/^Mem:/{print $3 "/" $2}' || echo "unknown")
++
++# Get load
++LOAD=$(cat /proc/loadavg 2>/dev/null | awk '{print $1 " " $2 " " $3}' || echo "unknown")
++
++cat <<EOF
++$(tput setaf 2)╔══════════════════════════════════════════════════════════╗
++║                    openWB 2.0                            ║
++╚══════════════════════════════════════════════════════════╝$(tput sgr0)
++  Web UI:      $(tput bold)http://${IP}/openWB/$(tput sgr0)
++  Status:      $([ "$OWB_STATUS" = "active" ] && tput setaf 2 || tput setaf 1)${OWB_STATUS}$(tput sgr0)
++  Git:         ${OWB_BRANCH} @ ${OWB_GIT}
++  OS:          ${DEBIAN_VER}
++  Uptime:      ${UPTIME}
++  Load:        ${LOAD}
++  Memory:      ${MEM}
++
++  $(tput dim)Logs: journalctl -u openwb2 -f$(tput sgr0)
++EOF
+diff --git a/openwb-install.sh b/openwb-install.sh
+index db972cc49..d01eebac7 100755
+--- a/openwb-install.sh
++++ b/openwb-install.sh
+@@ -130,6 +130,19 @@ chown -R "$OPENWB_USER:$OPENWB_GROUP" /opt/openwb-venv
+ sudo -u "$OPENWB_USER" /opt/openwb-venv/bin/python3 -m pip install --upgrade pip
+ sudo -u "$OPENWB_USER" /opt/openwb-venv/bin/python3 -m pip install -r "${OPENWBBASEDIR}/requirements.txt"
+ 
++echo "configuring chrony NTP..."
++systemctl stop systemd-timesyncd 2>/dev/null || true
++systemctl disable systemd-timesyncd 2>/dev/null || true
++cp "${OPENWBBASEDIR}/data/config/chrony/chrony.conf" /etc/chrony/chrony.conf
++systemctl enable chrony
++systemctl restart chrony
++echo "done"
++
++echo "installing MOTD..."
++cp "${OPENWBBASEDIR}/data/config/profile.d/99-openwb-motd.sh" /etc/profile.d/99-openwb-motd.sh
++chmod 755 /etc/profile.d/99-openwb-motd.sh
++echo "done"
++
+ echo "installing openwb2 system service..."
+ ln -s "${OPENWBBASEDIR}/data/config/openwb2.service" /etc/systemd/system/openwb2.service
+ systemctl daemon-reload
+diff --git a/runs/atreboot.sh b/runs/atreboot.sh
+index 290e2c88a..46b23f7d3 100755
+--- a/runs/atreboot.sh
++++ b/runs/atreboot.sh
+@@ -154,6 +154,26 @@ chmod 666 "$LOGFILE"
+ 		echo "#### continue anyway..."
+ 	fi
+ 
++	# chrony NTP setup
++	echo "NTP time synchronization..."
++	if versionMatch "${OPENWBBASEDIR}/data/config/chrony/chrony.conf" "/etc/chrony/chrony.conf"; then
++		echo "chrony config already up to date"
++	else
++		echo "configuring chrony NTP..."
++		sudo systemctl stop systemd-timesyncd 2>/dev/null || true
++		sudo systemctl disable systemd-timesyncd 2>/dev/null || true
++		sudo cp "${OPENWBBASEDIR}/data/config/chrony/chrony.conf" /etc/chrony/chrony.conf
++		sudo systemctl enable chrony
++		sudo systemctl restart chrony
++		echo "chrony configured"
++	fi
++
++	# MOTD setup
++	echo "MOTD setup..."
++	sudo cp "${OPENWBBASEDIR}/data/config/profile.d/99-openwb-motd.sh" /etc/profile.d/99-openwb-motd.sh
++	sudo chmod 755 /etc/profile.d/99-openwb-motd.sh
++	echo "done"
++
+ 	# tune apt configuration and install required packages
+ 	if [ -d "/etc/apt/apt.conf.d" ]; then
+ 		if versionMatch "${OPENWBBASEDIR}/data/config/apt/99openwb" "/etc/apt/apt.conf.d/99openwb"; then
+diff --git a/runs/install_packages.sh b/runs/install_packages.sh
+index e31f19551..e880ac270 100755
+--- a/runs/install_packages.sh
++++ b/runs/install_packages.sh
+@@ -30,6 +30,7 @@ COMMON_PACKAGES=(
+ 	git
+ 	mosquitto mosquitto-clients
+ 	python3 python3-venv python3-dev
++	chrony
+ )
+ 
+ if [ "$PLATFORM_IS_RPI" = true ]; then
+-- 
+2.52.0.windows.1
+
