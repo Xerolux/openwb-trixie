@@ -26,7 +26,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="3e5679a"
+BUILD_ID="1741095"
 
 # ============================================================================
 # Argumente parsen
@@ -1022,6 +1022,34 @@ do_post_update_hook() {
     sudo cp "$hook_src" "$OPENWB_DIR/data/config/post-update.sh"
     sudo chmod +x "$OPENWB_DIR/data/config/post-update.sh"
     log_success "Post-Update Hook installiert"
+}
+
+# ============================================================================
+# OpenWB Status MOTD installieren
+# ============================================================================
+install_motd() {
+    log_step "OpenWB Status MOTD"
+
+    local motd_src="$SCRIPT_DIR/lib/openwb-motd.sh"
+    if [ ! -f "$motd_src" ]; then
+        log_warning "MOTD Script nicht gefunden: $motd_src"
+        return 0
+    fi
+
+    sudo cp "$motd_src" /usr/local/bin/openwb-status
+    sudo chmod +x /usr/local/bin/openwb-status
+
+    sudo mkdir -p /etc/profile.d
+    sudo tee /etc/profile.d/openwb-motd.sh > /dev/null <<'PROFILE'
+#!/bin/bash
+# OpenWB Status beim Login anzeigen
+if [ -x /usr/local/bin/openwb-status ] && [ -n "$SSH_CONNECTION$DISPLAY" ] || [ -t 0 ]; then
+    /usr/local/bin/openwb-status 2>/dev/null || true
+fi
+PROFILE
+    sudo chmod 755 /etc/profile.d/openwb-motd.sh
+
+    log_success "OpenWB Status MOTD installiert"
 }
 
 # ============================================================================
@@ -2154,6 +2182,7 @@ main() {
     fix_openwb_homedir
     install_boot_service
     do_post_update_hook
+    install_motd
 
     # Bereits aktivierte Feature-Patches anwenden (ohne Menü)
     patches_apply_enabled
