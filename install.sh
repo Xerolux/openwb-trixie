@@ -26,7 +26,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="ade4f31"
+BUILD_ID="e3fae22"
 
 # ============================================================================
 # Argumente parsen
@@ -1723,14 +1723,21 @@ do_final_check() {
     fi
 
     echo -e "  ${BB}│${W}"
+    echo -e "  ${BB}│${W}  ${BY}System wird in 10 Sekunden neu gestartet...${W}"
     if is_arm_arch && is_raspberry_pi; then
-        echo -e "  ${BB}│${W}  ${BY}WICHTIG: Bitte zuerst rebooten fuer GPIO-Konfiguration!${W}"
-        echo -e "  ${BB}│${W}           ${BOLD}sudo reboot${W}"
-        echo -e "  ${BB}│${W}"
+        echo -e "  ${BB}│${W}  ${BY}(GPIO-Konfiguration wird bei Reboot aktiviert)${W}"
     fi
-    echo -e "  ${BB}│${W}  Danach: Im Browser oeffnen und OpenWB konfigurieren"
+    echo -e "  ${BB}│${W}"
+    echo -e "  ${BB}│${W}  Nach dem Reboot:"
+    echo -e "  ${BB}│${W}    1. Im Browser oeffnen: ${CY}http://$(hostname -I 2>/dev/null | awk '{print $1}')${W}"
+    echo -e "  ${BB}│${W}    2. OpenWB konfigurieren und starten"
     echo -e "  ${BB}└─────────────────────────────────────────────────────────┘${W}"
     echo ""
+
+    sleep 10
+    log "Reboote System..."
+    sync
+    reboot
 }
 
 # ============================================================================
