@@ -1,17 +1,5 @@
 #!/bin/bash
 
-ensure_bubbletea_menu_tool() {
-    if command -v gum >/dev/null 2>&1; then
-        return 0
-    fi
-
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y gum >/dev/null 2>&1 || true
-    fi
-
-    command -v gum >/dev/null 2>&1
-}
-
 ensure_native_bubbletea_menu() {
     local menu_bin="/tmp/openwb-bubbletea-menu"
     local menu_src="${LIB_DIR}/bubbletea_menu.go"
@@ -35,7 +23,7 @@ ensure_native_bubbletea_menu() {
         echo "$menu_bin"
         return 0
     fi
-    log_warning "Bubble Tea Build fehlgeschlagen, Fallback auf gum/whiptail/text. Log: /tmp/openwb-bubbletea-build.log"
+    log_warning "Bubble Tea Build fehlgeschlagen, Fallback auf whiptail/text. Log: /tmp/openwb-bubbletea-build.log"
     return 1
 }
 
@@ -47,40 +35,6 @@ bubbletea_main_menu() {
         return
     fi
     "$menu_bin"
-}
-
-gum_main_menu() {
-    local sys_py selection _gum_tmp
-    sys_py=$(python3 --version 2>&1 | awk '{print $2}')
-    _gum_tmp=$(mktemp)
-
-    gum choose --header "OpenWB Installer v${INSTALLER_VERSION} (Build ${BUILD_ID})" \
-        "1) System-Python + venv [EMPFOHLEN] (Python ${sys_py})" \
-        "2) Python 3.9.25 kompilieren [ORIGINAL]" \
-        "3) Python 3.14.4 + venv [NEUESTE]" \
-        "4) Feature-Patches verwalten" \
-        "5) Legacy Wallbox Module" \
-        "6) Tools installieren" \
-        "7) Status anzeigen" \
-        "8) Diagnose-Archiv erstellen" \
-        "9) Diagnose anonymisieren + hochladen" \
-        "10) Beenden" > "$_gum_tmp" 2>/dev/null < /dev/tty || true
-    selection=$(cat "$_gum_tmp")
-    rm -f "$_gum_tmp"
-
-    case "$selection" in
-        "1)"* )  echo "venv" ;;
-        "2)"* )  echo "python39" ;;
-        "3)"* )  echo "python314" ;;
-        "4)"* )  echo "patches" ;;
-        "5)"* )  echo "legacy_wallbox" ;;
-        "6)"* )  echo "tools" ;;
-        "7)"* )  echo "status" ;;
-        "8)"* )  echo "diagnose" ;;
-        "9)"* )  echo "diagnose_upload" ;;
-        "10)"* ) echo "quit" ;;
-        * )      echo "quit" ;;
-    esac
 }
 
 ensure_whiptail() {
