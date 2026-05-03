@@ -50,10 +50,11 @@ bubbletea_main_menu() {
 }
 
 gum_main_menu() {
-    local sys_py selection
+    local sys_py selection _gum_tmp
     sys_py=$(python3 --version 2>&1 | awk '{print $2}')
+    _gum_tmp=$(mktemp)
 
-    selection=$(gum choose --header "OpenWB Installer v${INSTALLER_VERSION} (Build ${BUILD_ID})" \
+    gum choose --header "OpenWB Installer v${INSTALLER_VERSION} (Build ${BUILD_ID})" \
         "1) System-Python + venv [EMPFOHLEN] (Python ${sys_py})" \
         "2) Python 3.9.25 kompilieren [ORIGINAL]" \
         "3) Python 3.14.4 + venv [NEUESTE]" \
@@ -63,7 +64,9 @@ gum_main_menu() {
         "7) Status anzeigen" \
         "8) Diagnose-Archiv erstellen" \
         "9) Diagnose anonymisieren + hochladen" \
-        "10) Beenden" 2>/dev/null || true)
+        "10) Beenden" > "$_gum_tmp" 2>/dev/null || true
+    selection=$(cat "$_gum_tmp")
+    rm -f "$_gum_tmp"
 
     case "$selection" in
         "1)"* )  echo "venv" ;;
