@@ -1,0 +1,162 @@
+From a04001a97485880a657cb747d58b9ee3821de60d Mon Sep 17 00:00:00 2001
+From: Basti <89860334+Xerolux@users.noreply.github.com>
+Date: Sun, 3 May 2026 13:10:34 +0200
+Subject: [PATCH] Upgrade paho-mqtt 1.6.1 to 2.1.0
+
+Migrate from paho-mqtt 1.6.1 to paho-mqtt >=2.1.0.
+In paho-mqtt 2.0+, mqtt.Client() requires CallbackAPIVersion
+as first argument.
+
+Changes:
+- requirements.txt: paho_mqtt==1.6.1 -> paho-mqtt>=2.1.0
+- mqtt.Client('id') -> mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id='id')
+- mqtt.Client() -> mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+- 8 files changed (broker, smarthome/mqtt, smartcommon, remoteSupport, simpleAPI)
+
+Tested on Debian Trixie (Python 3.13.5) with openWB2 service running.
+Requires-Python: >=3.7 (compatible with Python 3.9+)
+---
+ packages/helpermodules/broker.py        | 4 ++--
+ packages/modules/smarthome/mqtt/off.py  | 2 +-
+ packages/modules/smarthome/mqtt/on.py   | 2 +-
+ packages/modules/smarthome/mqtt/watt.py | 2 +-
+ packages/smarthome/smartcommon.py       | 6 +++---
+ requirements.txt                        | 2 +-
+ runs/remoteSupport/remoteSupport.py     | 2 +-
+ simpleAPI/simpleAPI_mqtt.py             | 2 +-
+ 8 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/packages/helpermodules/broker.py b/packages/helpermodules/broker.py
+index c9b6940c6..d41cf4560 100644
+--- a/packages/helpermodules/broker.py
++++ b/packages/helpermodules/broker.py
+@@ -25,7 +25,7 @@ class BrokerClient:
+                  port: int = 1886) -> None:
+         try:
+             self.name = f"openWB-{name}-{get_name_suffix()}"
+-            self.client = mqtt.Client(self.name)
++            self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=self.name)
+             self.client.on_connect = on_connect
+             self.client.on_message = on_message
+             self.client.connect(host, port)
+@@ -48,7 +48,7 @@ class BrokerClient:
+ class InternalBrokerPublisher:
+     def __init__(self) -> None:
+         try:
+-            self.client = mqtt.Client(f"openWB-python-bulk-publisher-{get_name_suffix()}")
++            self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=f"openWB-python-bulk-publisher-{get_name_suffix()}")
+             self.client.connect("localhost", 1886)
+         except Exception:
+             log.exception("Fehler beim Verbindungsaufbau zum Bulk-Publisher")
+diff --git a/packages/modules/smarthome/mqtt/off.py b/packages/modules/smarthome/mqtt/off.py
+index edb8cc395..4faf96844 100644
+--- a/packages/modules/smarthome/mqtt/off.py
++++ b/packages/modules/smarthome/mqtt/off.py
+@@ -16,7 +16,7 @@ def on_message(client, userdata, msg) -> None:
+ devicenumber = str(sys.argv[1])
+ ipadr = str(sys.argv[2])
+ uberschuss = int(sys.argv[3])
+-client = mqtt.Client("openWB-mqttsmarthomecust")
++client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="openWB-mqttsmarthomecust")
+ client.on_connect = on_connect
+ client.on_message = on_message
+ startTime = time.time()
+diff --git a/packages/modules/smarthome/mqtt/on.py b/packages/modules/smarthome/mqtt/on.py
+index aabd8d229..7794498fb 100644
+--- a/packages/modules/smarthome/mqtt/on.py
++++ b/packages/modules/smarthome/mqtt/on.py
+@@ -16,7 +16,7 @@ def on_message(client, userdata, msg) -> None:
+ devicenumber = str(sys.argv[1])
+ ipadr = str(sys.argv[2])
+ uberschuss = int(sys.argv[3])
+-client = mqtt.Client("openWB-mqttsmarthomecust")
++client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="openWB-mqttsmarthomecust")
+ client.on_connect = on_connect
+ client.on_message = on_message
+ startTime = time.time()
+diff --git a/packages/modules/smarthome/mqtt/watt.py b/packages/modules/smarthome/mqtt/watt.py
+index 304b00042..44fd4eed7 100644
+--- a/packages/modules/smarthome/mqtt/watt.py
++++ b/packages/modules/smarthome/mqtt/watt.py
+@@ -50,7 +50,7 @@ tempc = '300.00'
+ devicenumber = int(sys.argv[1])
+ ipadr = str(sys.argv[2])
+ uberschuss = int(sys.argv[3])
+-client = mqtt.Client("openWB-mqttsmarthomecust" + str(devicenumber))
++client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="openWB-mqttsmarthomecust" + str(devicenumber))
+ client.on_connect = on_connect
+ client.on_message = on_message
+ startTime = time.time()
+diff --git a/packages/smarthome/smartcommon.py b/packages/smarthome/smartcommon.py
+index 7b6d958a4..397e99ac4 100644
+--- a/packages/smarthome/smartcommon.py
++++ b/packages/smarthome/smartcommon.py
+@@ -205,7 +205,7 @@ def pub(client: mqtt.Client, key: str, value: str) -> None:
+ 
+ def sendmq(mqtt_input: Dict[str, str]) -> None:
+     global mqtt_cache
+-    client = mqtt.Client("openWB-SmartHome-bulkpublisher-" + str(os.getpid()))
++    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="openWB-SmartHome-bulkpublisher-" + str(os.getpid()))
+     client.connect("localhost", mqttport)
+     for key, value in mqtt_input.items():
+         valueold = mqtt_cache.get(key, 'not in cache')
+@@ -233,7 +233,7 @@ def update_devices() -> None:
+     global parammqtt
+     global mydevices
+     global mqtt_cache
+-    client = mqtt.Client("openWB-SmartHome-bulkpublisher-" + str(os.getpid()))
++    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="openWB-SmartHome-bulkpublisher-" + str(os.getpid()))
+     client.connect("localhost", mqttport)
+     # statische daten einschaltgruppe
+     Sbase.ausdevices = 0
+@@ -347,7 +347,7 @@ def readmq() -> None:
+         with open(bp+'/ramdisk/smartparam.sh', 'w') as f:
+             print('%s' % ('#!/bin/bash'), file=f)
+     parammqtt = []
+-    client = mqtt.Client("openWB-mqttsmarthome")
++    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="openWB-mqttsmarthome")
+     client.on_connect = on_connect
+     client.on_message = on_message
+     startTime = time.time()
+diff --git a/requirements.txt b/requirements.txt
+index d3f116305..be4d96d78 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,7 +1,7 @@
+ # don't update python distribution packages in here
+ typing-extensions==4.13.2
+ jq==1.1.3
+-paho_mqtt==1.6.1
++paho-mqtt>=2.1.0
+ pymodbus==2.5.2
+ pytest==6.2.5
+ requests_mock==1.9.3
+diff --git a/runs/remoteSupport/remoteSupport.py b/runs/remoteSupport/remoteSupport.py
+index f20ab349b..65f03ea2b 100755
+--- a/runs/remoteSupport/remoteSupport.py
++++ b/runs/remoteSupport/remoteSupport.py
+@@ -222,7 +222,7 @@ log.debug("registering signal handlers")
+ signal(SIGTERM, handle_terminate)  # Handle SIGTERM from systemctl for graceful shutdown
+ signal(SIGINT, handle_terminate)  # Handle SIGINT from keyboard (Strg+C) for graceful shutdown
+ lt_executable = get_lt_executable()
+-client = mqtt.Client(f"openWB-remote-{get_serial()}-{datetime.today().timestamp()}")
++client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=f"openWB-remote-{get_serial()}-{datetime.today().timestamp()}")
+ client.on_connect = on_connect
+ client.on_message = on_message
+ client.will_set(STATE_TOPIC, json.dumps("offline"), qos=2, retain=True)
+diff --git a/simpleAPI/simpleAPI_mqtt.py b/simpleAPI/simpleAPI_mqtt.py
+index 2882fcfd9..f960d4d45 100755
+--- a/simpleAPI/simpleAPI_mqtt.py
++++ b/simpleAPI/simpleAPI_mqtt.py
+@@ -47,7 +47,7 @@ class SimpleMQTTDaemon:
+         self.charge_template_cache: Dict[str, Dict[str, Any]] = {}
+ 
+         # MQTT client setup
+-        self.client = mqtt.Client()
++        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+         self.client.on_connect = self._on_connect
+         self.client.on_message = self._on_message
+         self.client.on_disconnect = self._on_disconnect
+-- 
+2.52.0.windows.1
+
