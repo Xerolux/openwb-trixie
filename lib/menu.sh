@@ -64,7 +64,7 @@ gum_main_menu() {
         "7) Status anzeigen" \
         "8) Diagnose-Archiv erstellen" \
         "9) Diagnose anonymisieren + hochladen" \
-        "10) Beenden" > "$_gum_tmp" 2>/dev/null || true
+        "10) Beenden" > "$_gum_tmp" 2>/dev/null < /dev/tty || true
     selection=$(cat "$_gum_tmp")
     rm -f "$_gum_tmp"
 
