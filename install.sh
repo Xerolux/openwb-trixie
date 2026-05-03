@@ -26,7 +26,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="e3fae22"
+BUILD_ID="588966e"
 
 # ============================================================================
 # Argumente parsen
@@ -975,13 +975,14 @@ ensure_pip3_wrapper() {
     fi
 
     local wrapper="/usr/local/bin/pip3"
-    if [ -f "$wrapper" ] && head -1 "$wrapper" | grep -q openwb-venv; then
+    if [ -f "$wrapper" ] && grep -q "openwb-venv" "$wrapper"; then
         return 0
     fi
 
     log "Erstelle pip3-Wrapper -> venv..."
     sudo tee "$wrapper" > /dev/null <<'WRAPPER'
 #!/bin/bash
+# openwb-venv wrapper for pip3
 if [ -x /opt/openwb-venv/bin/pip3 ]; then
     exec /opt/openwb-venv/bin/pip3 "$@"
 else
