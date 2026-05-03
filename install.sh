@@ -26,7 +26,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="88781d5"
+BUILD_ID="3d8edae"
 
 # ============================================================================
 # Argumente parsen
@@ -1957,28 +1957,17 @@ main() {
     log "Architektur: $(uname -m)$(is_raspberry_pi && echo ' (Raspberry Pi)' || true)"
 
     # Repository bereitstellen (fuer Patches + Tools)
-    log "[DEBUG] ensure_repo aufrufen..."
     ensure_repo
-    log "[DEBUG] ensure_repo abgeschlossen"
 
     while [ -z "$MODE" ]; do
-        log "[DEBUG] Menu-Loop gestartet"
         local choice=""
         if command -v go >/dev/null 2>&1; then
-            log "[DEBUG] Verwende bubbletea_main_menu"
             choice=$(bubbletea_main_menu)
-        elif ensure_bubbletea_menu_tool; then
-            log "[DEBUG] Verwende gum_main_menu"
-            choice=$(gum_main_menu)
         elif [ $USE_WHIPTAIL -eq 0 ]; then
-            log "[DEBUG] Verwende whiptail_main_menu"
             choice=$(whiptail_main_menu)
         else
-            log "[DEBUG] Verwende text_main_menu"
             choice=$(text_main_menu)
         fi
-
-        log "[DEBUG] Menu-Wahl: '$choice'"
         case "$choice" in
             quit) echo "Tschüss!"; exit 0 ;;
             venv|python39|python314) MODE="$choice" ;;
