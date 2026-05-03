@@ -26,7 +26,7 @@
 set -Ee -o pipefail
 
 INSTALLER_VERSION="2026-05-01"
-BUILD_ID="588966e"
+BUILD_ID="3e5679a"
 
 # ============================================================================
 # Argumente parsen
@@ -1858,17 +1858,20 @@ show_status() {
 
     local current_build
     if [ -d "$REPO_DIR/.git" ]; then
-        current_build=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
+        current_build=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null)
     elif [ -d "$SCRIPT_DIR/.git" ]; then
-        current_build=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
-    else
-        current_build="${BUILD_ID:-?}"
+        current_build=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null)
     fi
+    current_build="${current_build:-${BUILD_ID:-?}}"
 
     local remote_build
-    remote_build=$(git ls-remote --refs https://github.com/Xerolux/openwb-trixie.git HEAD 2>/dev/null | awk '{print substr($1,1,7)}' || true)
+    remote_build=$(git ls-remote --refs https://github.com/Xerolux/openwb-trixie.git HEAD 2>/dev/null | awk '{print substr($1,1,7)}')
 
-    echo -e "  ${BB}│${W}    ${BOLD}Installiert:${W}  ${BG}${current_build}${W}"
+    if [ -n "$current_build" ] && [ "$current_build" != "?" ]; then
+        echo -e "  ${BB}│${W}    ${BOLD}Installiert:${W}  ${BG}${current_build}${W}"
+    else
+        echo -e "  ${BB}│${W}    ${BOLD}Installiert:${W}  ${RED}Information nicht verfügbar${W}"
+    fi
     if [ -n "$remote_build" ]; then
         if [ "$current_build" = "$remote_build" ]; then
             echo -e "  ${BB}│${W}    ${BOLD}Aktuell:${W}      ${GR}${remote_build} (up to date)${W}"
@@ -1882,8 +1885,12 @@ show_status() {
 
     if [ -d "$OPENWB_DIR" ]; then
         local owb_ver
-        owb_ver=$(cd "$OPENWB_DIR" 2>/dev/null && git log -1 --format='%h %cs' 2>/dev/null || echo "?")
-        echo -e "  ${BB}│${W}    ${BOLD}Version:${W}     $owb_ver"
+        owb_ver=$(git -C "$OPENWB_DIR" log -1 --format='%h %cs' 2>/dev/null)
+        if [ -n "$owb_ver" ]; then
+            echo -e "  ${BB}│${W}    ${BOLD}Version:${W}     ${GR}$owb_ver${W}"
+        else
+            echo -e "  ${BB}│${W}    ${BOLD}Status:${W}       ${GR}installiert${W}"
+        fi
     else
         echo -e "  ${BB}│${W}    ${RED}nicht installiert${W}"
     fi
